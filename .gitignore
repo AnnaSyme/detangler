@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Tool outputs — regenerate with the script, don't commit
+demo_data/
+results/
+out*/
+*_ideogram.svg
+*_ideogram.html
+*_graph.svg
+*_paired.svg
+*_karyotype.yaml
+*_karyotype.json
+*_report.md
+*_repeat_candidates.fasta
+*_blast_commands.sh
+*_repeat_hits.tsv
+
+# but do keep the worked example, it is the regression fixture
+!worked_example/assembly_graph.gfa
+!worked_example/assembly_info.txt
+
+# OS / editor
+.DS_Store
+*.swp

@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="2339" height="1268" viewBox="0 0 2339 1268" font-family="Helvetica, Arial, sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="60" y="44" font-size="30" font-weight="600" fill="#1a1a1a">Fusarium graminearum, Flye, real GFA</text>
+<path d="M 1295 500 L 1385 500 L 1385 472 L 1440 520 L 1385 568 L 1385 540 L 1295 540 Z" fill="#b8b8b8"/>
+<g transform="translate(60,95)">
+<text x="20" y="28" font-size="24" font-weight="600" fill="#1a1a1a">Assembly graph</text>
+<g id="layer-stubs" fill="none" stroke="#3a3a3a" stroke-width="6" stroke-opacity="0.85" stroke-linecap="round">
+<path d="M 490 425 Q 505 437 520 450"/>
+<path d="M 515 425 Q 517 437 520 450"/>
+<path d="M 545 469 Q 565 473 585 477"/>
+<path d="M 585 477 Q 575 493 563 510"/>
+<path d="M 585 477 Q 583 503 581 530"/>
+<path d="M 585 477 Q 597 490 610 505"/>
+<path d="M 585 477 Q 592 498 598 520"/>
+<path d="M 720 555 Q 727 558 733 562"/>
+<path d="M 736 576 Q 734 569 733 562"/>
+<path d="M 733 562 Q 739 566 745 570"/>
+<path d="M 860 200 Q 872 190 883 182"/>
+</g>
+<g id="layer-segments" stroke-linecap="butt" fill="none">
+<path d="M 140 150 Q 320 300 490 425" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 140 150 Q 320 300 490 425" stroke="#4363d8" stroke-width="36"/>
+<path d="M 515 425 Q 700 300 860 200" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 515 425 Q 700 300 860 200" stroke="#f58231" stroke-width="36"/>
+<circle cx="897" cy="170" r="22" stroke="#2b2b2b" stroke-width="20.5" stroke-opacity="0.5"/>
+<circle cx="897" cy="170" r="22" stroke="#f032e6" stroke-width="18"/>
+<path d="M 520 450 L 545 469" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 520 450 L 545 469" stroke="#ffe119" stroke-width="36"/>
+<path d="M 585 477 L 625 458" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 585 477 L 625 458" stroke="#e6194b" stroke-width="36"/>
+<path d="M 563 510 C 490 560, 410 640, 455 685 C 500 730, 565 610, 581 530" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 563 510 C 490 560, 410 640, 455 685 C 500 730, 565 610, 581 530" stroke="#3cb44b" stroke-width="36"/>
+<path d="M 610 505 Q 670 520 720 555" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 610 505 Q 670 520 720 555" stroke="#42d4f4" stroke-width="36"/>
+<path d="M 598 520 C 615 680, 780 700, 736 576" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 598 520 C 615 680, 780 700, 736 576" stroke="#911eb4" stroke-width="36"/>
+<path d="M 745 570 L 785 592" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 745 570 L 785 592" stroke="#9a6324" stroke-width="36"/>
+<circle cx="1150" cy="430" r="26" stroke="#2b2b2b" stroke-width="22.5" stroke-opacity="0.5"/>
+<circle cx="1150" cy="430" r="26" stroke="#bfef45" stroke-width="20"/>
+<path d="M 1140 600 L 1170 600" stroke="#2b2b2b" stroke-width="38.5" stroke-opacity="0.5"/>
+<path d="M 1140 600 L 1170 600" stroke="#8d8d8d" stroke-width="36"/>
+</g>
+<g id="layer-numbers" font-weight="700" text-anchor="middle">
+<text x="318" y="276" font-size="20" fill="#ffffff">6</text>
+<text x="694" y="313" font-size="20" fill="#ffffff">5</text>
+<text x="897" y="175" font-size="13" fill="#c026b8">10</text>
+<text x="532" y="466" font-size="20" fill="#1a1a1a">3</text>
+<text x="605" y="474" font-size="20" fill="#ffffff">9</text>
+<text x="465" y="606" font-size="20" fill="#ffffff">1</text>
+<text x="667" y="532" font-size="20" fill="#1a1a1a">2</text>
+<text x="690" y="661" font-size="20" fill="#ffffff">7</text>
+<text x="765" y="588" font-size="20" fill="#ffffff">8</text>
+<text x="1150" y="435" font-size="14" fill="#7ba428">11</text>
+<text x="1155" y="607" font-size="20" fill="#ffffff">4</text>
+</g>
+<g id="layer-coverage" font-size="17" font-weight="600" fill="#3a3a3a">
+<text x="275" y="225" text-anchor="middle">1.0x</text>
+<text x="760" y="208" text-anchor="middle">1.1x</text>
+<text x="934" y="176">66.8x</text>
+<text x="475" y="505" text-anchor="middle">0.5x</text>
+<text x="658" y="445">1.9x</text>
+<text x="450" y="748" text-anchor="middle">1.0x</text>
+<text x="655" y="578" text-anchor="middle">1.0x</text>
+<text x="700" y="717" text-anchor="middle">1.1x</text>
+<text x="815" y="592">0.2x</text>
+<text x="1150" y="488" text-anchor="middle">10.7x</text>
+<text x="1155" y="648" text-anchor="middle">0.3x</text>
+</g>
+</g>
+<g transform="translate(1399,95)">
+<text x="50" y="28" font-size="24" font-weight="600" fill="#1a1a1a">Hypothesis of chromosome structure</text>
+<g id="layer-chromosomes">
+<rect x="50" y="160" width="36" height="644" rx="18" ry="18" fill="#d9d9d9" stroke="#2b2b2b" stroke-width="0.9"/>
+<g class="blocks">
+<path d="M 50 178 A 18 18 0 0 1 68 160 L 68 160 A 18 18 0 0 1 86 178 L 86 184 L 50 184 Z" fill="#f032e6" stroke="#ffffff" stroke-width="0.6"/>
+<text x="68" y="178" font-size="13" font-weight="700" text-anchor="middle" fill="#ffffff">10</text>
+<text x="93" y="178" font-size="13" font-weight="600" fill="#c026b8">&#215;67 tandem array</text>
+<rect x="50" y="184" width="36" height="267" fill="#f58231" stroke="#ffffff" stroke-width="0.6"/>
+<text x="68" y="325" font-size="20" font-weight="700" text-anchor="middle" fill="#ffffff">5</text>
+<rect x="50" y="451" width="36" height="6" fill="#ffe119" stroke="#ffffff" stroke-width="0.6"/>
+<text x="93" y="462" font-size="13" font-weight="600" fill="#b59a00">3 &#183; bridge</text>
+<path d="M 50 457 L 86 457 L 86 786 A 18 18 0 0 1 68 804 L 68 804 A 18 18 0 0 1 50 786 Z" fill="#4363d8" stroke="#ffffff" stroke-width="0.6"/>
+<text x="68" y="630" font-size="20" font-weight="700" text-anchor="middle" fill="#ffffff">6</text>
+</g>
+<rect x="50" y="160" width="36" height="644" rx="18" ry="18" fill="none" stroke="#2b2b2b" stroke-width="1.1"/>
+<rect x="224" y="160" width="36" height="326.6" rx="18" ry="18" fill="#d9d9d9" stroke="#2b2b2b" stroke-width="0.9"/>
+<g class="blocks">
+<path d="M 224 178 A 18 18 0 0 1 242 160 L 242 160 A 18 18 0 0 1 260 178 L 260 184 L 224 184 Z" fill="#9a6324" stroke="#ffffff" stroke-width="0.6"/>
+<text x="242" y="178" font-size="13" font-weight="700" text-anchor="middle" fill="#ffffff">8</text>
+<rect x="224" y="184" width="36" height="282" fill="#911eb4" stroke="#ffffff" stroke-width="0.6"/>
+<text x="242" y="330" font-size="20" font-weight="700" text-anchor="middle" fill="#ffffff">7</text>
+<path d="M 224 466 L 260 466 L 260 468.6 A 18 18 0 0 1 242 486.6 L 242 486.6 A 18 18 0 0 1 224 468.6 Z" fill="#e6194b" stroke="#ffffff" stroke-width="0.6"/>
+<text x="242" y="482" font-size="13" font-weight="700" text-anchor="middle" fill="#ffffff">9</text>
+</g>
+<rect x="224" y="160" width="36" height="326.6" rx="18" ry="18" fill="none" stroke="#2b2b2b" stroke-width="1.1"/>
+<rect x="398" y="160" width="36" height="284.7" rx="18" ry="18" fill="#d9d9d9" stroke="#2b2b2b" stroke-width="0.9"/>
+<g class="blocks">
+<path d="M 398 178 A 18 18 0 0 1 416 160 L 416 160 A 18 18 0 0 1 434 178 L 434 184 L 398 184 Z" fill="#e6194b" stroke="#ffffff" stroke-width="0.6"/>
+<text x="416" y="178" font-size="13" font-weight="700" text-anchor="middle" fill="#ffffff">9</text>
+<rect x="398" y="184" width="36" height="242" fill="#3cb44b" stroke="#ffffff" stroke-width="0.6"/>
+<text x="416" y="310" font-size="20" font-weight="700" text-anchor="middle" fill="#ffffff">1</text>
+<path d="M 398 426 L 434 426 L 434 426.7 A 18 18 0 0 1 416 444.7 L 416 444.7 A 18 18 0 0 1 398 426.7 Z" fill="#e6194b" stroke="#ffffff" stroke-width="0.6"/>
+<text x="416" y="441" font-size="13" font-weight="700" text-anchor="middle" fill="#ffffff">9</text>
+</g>
+<rect x="398" y="160" width="36" height="284.7" rx="18" ry="18" fill="none" stroke="#2b2b2b" stroke-width="1.1"/>
+<rect x="572" y="160" width="36" height="100.2" rx="18" ry="18" fill="#d9d9d9" stroke="#2b2b2b" stroke-width="0.9"/>
+<g class="blocks">
+<path d="M 572 178 A 18 18 0 0 1 590 160 L 590 160 A 18 18 0 0 1 608 178 L 608 184 L 572 184 Z" fill="#9a6324" stroke="#ffffff" stroke-width="0.6"/>
+<text x="590" y="178" font-size="13" font-weight="700" text-anchor="middle" fill="#ffffff">8</text>
+<rect x="572" y="184" width="36" height="58" fill="#42d4f4" stroke="#ffffff" stroke-width="0.6"/>
+<text x="590" y="220" font-size="20" font-weight="700" text-anchor="middle" fill="#1a1a1a">2</text>
+<path d="M 572 242 L 608 242 L 608 242.2 A 18 18 0 0 1 590 260.2 L 590 260.2 A 18 18 0 0 1 572 242.2 Z" fill="#e6194b" stroke="#ffffff" stroke-width="0.6"/>
+<text x="590" y="257" font-size="13" font-weight="700" text-anchor="middle" fill="#ffffff">9</text>
+</g>
+<rect x="572" y="160" width="36" height="100.2" rx="18" ry="18" fill="none" stroke="#2b2b2b" stroke-width="1.1"/>
+<circle cx="740" cy="215" r="42" fill="none" stroke="#bfef45" stroke-width="22"/>
+<text x="740" y="221" font-size="15" font-weight="700" text-anchor="middle" fill="#7ba428">11</text>
+<text x="740" y="125" font-size="13" text-anchor="middle" fill="#6b6b6b">mitochondrion</text>
+<text x="740" y="295" font-size="13" text-anchor="middle" fill="#6b6b6b">(organelle candidate)</text>
+<text x="740" y="313" font-size="13" text-anchor="middle" fill="#6b6b6b">circular &#183; AT-rich</text>
+</g>
+<g id="layer-unassigned">
+<line x1="805" y1="134" x2="805" y2="780" stroke="#e3e3e3" stroke-dasharray="3 4"/>
+<text x="819" y="140" font-size="18" font-weight="600" fill="#1a1a1a">Not assigned</text>
+<rect x="819" y="160" width="36" height="110" rx="4" fill="#8d8d8d" stroke="#2b2b2b" stroke-width="0.8"/>
+<text x="837" y="222" font-size="20" font-weight="700" text-anchor="middle" fill="#ffffff">4</text>
+<text x="837" y="300" font-size="13" text-anchor="middle" fill="#6b6b6b">candidate contaminant</text>
+<text x="837" y="320" font-size="13" text-anchor="middle" fill="#6b6b6b">GC 32% vs genome 48%</text>
+</g>
+</g>
+</svg>

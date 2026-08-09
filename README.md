@@ -10,6 +10,20 @@ paired figure: the assembly graph on the left, the inferred chromosomes on
 the right, one colour per segment in both panels. No expected karyotype is
 needed — the chromosome count is inferred from the structure of the graph.
 
+## What it looks like
+
+Design target for the paired figure (mockup; the drawing code is being
+updated to match):
+
+![Paired figure design mockup: assembly graph resolved into a chromosome
+hypothesis](detangler_figure-mockup_v1.svg)
+
+Current output on a real Flye assembly of *Fusarium graminearum* (11 graph
+segments resolving into 4 chromosomes plus a mitochondrion):
+
+![Current detangler output on the Fusarium graminearum Flye
+assembly](real_data/chromviz_fusarium_paired.png)
+
 ## Required inputs
 
 One sequence input:

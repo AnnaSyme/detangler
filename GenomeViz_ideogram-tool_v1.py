@@ -4580,51 +4580,62 @@ def render_paired_svg(
         model.title = real_title
 
     iw, ih = lay.width, _svg_height(ideo_svg)
-    ox = gw + PAIR_GUTTER  # x offset of the ideogram panel
-    width = ox + iw
-    height = max(gh, ih) + 58
-    top = 58.0
 
-    by_name = {c.name: c for c in calls}
+    # ---- left panel: a real Bandage export if given, otherwise our redraw ----
+    external = args.bandage_image and os.path.exists(args.bandage_image)
+    if args.bandage_image and not external:
+        log.warn(f"--bandage-image {args.bandage_image} not found; using our own redraw instead")
+    if external:
+        src = image_size(args.bandage_image)
+        if src is None:
+            log.warn(
+                f"could not read the dimensions of {args.bandage_image}; expected PNG, JPEG or "
+                f"SVG. Using our own redraw instead."
+            )
+            external = False
+    if external:
+        # scale the Bandage export to the height of the chromosome panel
+        panel_h = ih - 70
+        panel_w = panel_h * (src[0] / src[1])
+        if panel_w > args.bandage_max_width:
+            panel_w = args.bandage_max_width
+            panel_h = panel_w * (src[1] / src[0])
+        gw_eff, gh_eff = panel_w, panel_h
+        left_label = "Assembly graph, as drawn by Bandage"
+    elif args.rotate_graph:
+        # rotating our redraw a quarter turn trades a very wide figure for a
+        # taller, narrower one that fits a page or a slide
+        gw_eff, gh_eff = gh, gw
+        left_label = "Assembly graph, our redraw, rotated a quarter turn"
+    else:
+        gw_eff, gh_eff = gw, gh
+        left_label = "Assembly graph, our redraw of the GFA"
+
+    ox = gw_eff + PAIR_GUTTER  # x offset of the ideogram panel
+    width = ox + iw
+    height = max(gh_eff, ih) + 78
+    top = 78.0
+
     P = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
+        f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        f'width="{width:.0f}" height="{height:.0f}" '
         f'viewBox="0 0 {width:.0f} {height:.0f}" font-family="Helvetica, Arial, sans-serif">',
         f'<rect width="100%" height="100%" fill="{PALETTE["bg"]}"/>',
         f'<text x="60" y="30" font-size="19" font-weight="600" fill="{PALETTE["text"]}">'
         f'{esc(model.title)}</text>',
         f'<text x="60" y="49" font-size="12" fill="{PALETTE["muted"]}">'
-        f'Assembly graph, left, resolved into linear chromosomes, right. A segment keeps its '
-        f'colour across both panels; faint lines join a node to where it ended up.</text>',
+        f'Assembly graph, left, resolved into linear chromosomes, right. A segment keeps the '
+        f'same colour in both panels.</text>',
+        f'<text x="60" y="68" font-size="11" font-weight="600" fill="{PALETTE["muted"]}">'
+        f'{esc(left_label)}</text>',
     ]
 
-    # leader lines first, so both panels sit on top of them
-    P.append('<g id="layer-leaders" stroke-linecap="round">')
-    ranked = sorted(
-        (n for n in anchors if n in pos and n in by_name),
-        key=lambda n: (by_name[n].cls == "backbone", -by_name[n].length),
-    )
-    for name in ranked[: args.max_leader_lines]:
-        gx, gy = pos[name]
-        ix, iy = anchors[name]
-        x1 = gx + graph_node_width(by_name[name].length)
-        y1 = gy + top
-        x2 = ox + ix
-        y2 = iy + top
-        P.append(
-            f'<path d="M {x1:.1f} {y1:.1f} C {x1 + 60:.1f} {y1:.1f}, '
-            f'{x2 - 60:.1f} {y2:.1f}, {x2:.1f} {y2:.1f}" fill="none" '
-            f'stroke="{colours.get(name, "#9aa0a6")}" stroke-width="1.1" '
-            f'stroke-opacity="0.4" stroke-dasharray="4 4"/>'
-        )
-    if len(ranked) > args.max_leader_lines:
-        P.append(
-            f'<text x="60" y="{height - 14:.0f}" font-size="10" fill="{PALETTE["muted"]}">'
-            f'Leader lines shown for {args.max_leader_lines} of {len(ranked)} placed segments, '
-            f'chosen shortest first; colour still identifies the rest.</text>'
-        )
-    P.append("</g>")
-
-    P.append(_place_svg(graph_svg, 0, top))
+    if external:
+        P.append(embed_image(args.bandage_image, 0, top, gw_eff, gh_eff))
+    elif args.rotate_graph:
+        P.append(_place_svg(graph_svg, 0, top, rotate=-90))
+    else:
+        P.append(_place_svg(graph_svg, 0, top))
     P.append(_place_svg(ideo_svg, ox, top))
     P.append("</svg>")
     return "\n".join(P)
@@ -4635,10 +4646,111 @@ def _svg_height(svg: str) -> float:
     return float(m.group(1)) if m else 800.0
 
 
+def _svg_width(svg: str) -> float:
+    m = re.search(r'<svg[^>]*\bwidth="([0-9.]+)"', svg)
+    return float(m.group(1)) if m else 800.0
+
+
+def image_size(path: str) -> Optional[Tuple[float, float]]:
+    """Pixel dimensions of a PNG, JPEG or SVG, without needing an image library."""
+    import struct
+
+    with open(path, "rb") as fh:
+        head = fh.read(4096)
+    if head[:8] == b"\x89PNG\r\n\x1a\n":
+        w, h = struct.unpack(">II", head[16:24])
+        return float(w), float(h)
+    if head[:2] == b"\xff\xd8":  # JPEG: walk the segment markers for SOFn
+        with open(path, "rb") as fh:
+            fh.read(2)
+            while True:
+                b = fh.read(1)
+                while b and b != b"\xff":
+                    b = fh.read(1)
+                marker = fh.read(1)
+                while marker == b"\xff":
+                    marker = fh.read(1)
+                if not marker:
+                    return None
+                if marker[0] in range(0xC0, 0xCF) and marker[0] not in (0xC4, 0xC8, 0xCC):
+                    fh.read(3)
+                    h, w = struct.unpack(">HH", fh.read(4))
+                    return float(w), float(h)
+                size = struct.unpack(">H", fh.read(2))[0]
+                fh.read(size - 2)
+    text = head.decode("utf-8", "replace")
+    if "<svg" in text:
+        w = re.search(r'<svg[^>]*\bwidth="([0-9.]+)', text)
+        h = re.search(r'<svg[^>]*\bheight="([0-9.]+)', text)
+        if w and h:
+            return float(w.group(1)), float(h.group(1))
+        vb = re.search(r'viewBox="[\s0-9.\-]*?([0-9.]+)\s+([0-9.]+)"', text)
+        if vb:
+            return float(vb.group(1)), float(vb.group(2))
+    return None
+
+
+def embed_image(path: str, x: float, y: float, w: float, h: float) -> str:
+    """
+    Place an external image as a panel, inlined as base64 so the figure stays a
+    single portable file. An SVG export keeps its vectors; a PNG or JPEG is
+    embedded as-is.
+    """
+    import base64
+    import mimetypes
+
+    if path.lower().endswith(".svg"):
+        with open(path) as fh:
+            svg = fh.read()
+        body = svg.split(">", 1)[1].rsplit("</svg>", 1)[0]
+        body = _BG_RECT_RE.sub("", body, count=1)
+        src = image_size(path) or (w, h)
+        scale = min(w / src[0], h / src[1])
+        return (
+            f'<g transform="translate({x:.1f},{y:.1f}) scale({scale:.4f})">{body}</g>'
+        )
+    mime = mimetypes.guess_type(path)[0] or "image/png"
+    with open(path, "rb") as fh:
+        data = base64.b64encode(fh.read()).decode("ascii")
+    return (
+        f'<image x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+        f'preserveAspectRatio="xMidYMin meet" xlink:href="data:{mime};base64,{data}"/>'
+    )
+
+
+def write_bandage_colour_csv(
+    calls: List[SegmentCall], colours: Dict[str, str], path: str, log: Log
+) -> str:
+    """
+    A CSV Bandage can load to colour the graph the way we do, so a real Bandage
+    render and our chromosome figure agree.
+
+    Bandage keys rows by segment name in the first column and recognises a
+    colour column; the remaining columns show up as node labels. If the colours
+    do not take, check the column name against Bandage's own colour-schemes
+    documentation for your version rather than assuming this header is right.
+    """
+    import csv
+
+    with open(path, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["Name", "Colour", "Color", "Class", "CopyNumber", "Depth", "Length"])
+        for c in sorted(calls, key=lambda c: -c.length):
+            colour = colours.get(c.name, "#cfcfcf")
+            w.writerow([
+                c.name, colour, colour, CLASS_LABEL.get(c.cls, c.cls),
+                f"{c.copy_number:.2f}" if c.copy_number is not None else "",
+                f"{c.depth:.1f}" if c.depth is not None else "",
+                c.length,
+            ])
+    log.info(f"wrote Bandage colour CSV for {len(calls)} segments to {path}")
+    return path
+
+
 _BG_RECT_RE = re.compile(r'<rect width="100%" height="100%"[^/]*/>')
 
 
-def _place_svg(svg: str, x: float, y: float) -> str:
+def _place_svg(svg: str, x: float, y: float, rotate: float = 0) -> str:
     """
     Re-position a complete SVG document as a panel of a larger figure.
 
@@ -4649,6 +4761,11 @@ def _place_svg(svg: str, x: float, y: float) -> str:
     """
     body = svg.split(">", 1)[1].rsplit("</svg>", 1)[0]
     body = _BG_RECT_RE.sub("", body, count=1)
+    if rotate == -90:
+        # a quarter turn anticlockwise: the panel's own width becomes the height
+        # of its footprint, so shift down by that width to land back in view
+        w = _svg_width(svg)
+        return f'<g transform="translate({x:.1f},{y + w:.1f}) rotate(-90)">{body}</g>'
     return f'<g transform="translate({x:.1f},{y:.1f})">{body}</g>'
 
 
@@ -4691,6 +4808,9 @@ def write_figures(
     if not graph_path:
         return out
     out["assembly graph figure"] = graph_path
+    out["Bandage colour CSV (load this in Bandage)"] = write_bandage_colour_csv(
+        calls, colours, base + "_bandage_colours.csv", log
+    )
     paired = base + "_paired.svg"
     with open(paired, "w") as fh:
         fh.write(render_paired_svg(model, calls, links, colours, args, log))
@@ -5061,6 +5181,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--max-leader-lines", type=int, default=40,
                    help="leader lines drawn between the two panels of the paired figure "
                         "(default 40); colour still identifies segments beyond that")
+    g.add_argument("--bandage-image", metavar="FILE",
+                   help="a real Bandage export (PNG, JPEG or SVG) to use as the left panel of "
+                        "the paired figure instead of our redraw. Load the emitted "
+                        "*_bandage_colours.csv in Bandage first so the two panels agree on "
+                        "colour.")
+    g.add_argument("--bandage-max-width", type=float, default=1400.0,
+                   help="cap on the width of an embedded Bandage image (default 1400)")
+    g.add_argument("--rotate-graph", action=argparse.BooleanOptionalAction, default=True,
+                   help="turn our graph redraw a quarter turn so the paired figure is narrower "
+                        "and taller (default: on). Labels then read bottom-to-top.")
     g.add_argument("--max-graph-nodes", type=int, default=300,
                    help="skip the graph figure above this many segments (default 300)")
     g.add_argument("--blast-classes", nargs="+",

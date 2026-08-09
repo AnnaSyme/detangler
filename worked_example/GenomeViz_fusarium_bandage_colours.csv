@@ -1,0 +1,12 @@
+Name,Colour,Color,Class,CopyNumber,Depth,Length
+edge_6,#4a7ba7,#4a7ba7,single-copy backbone,1.00,19.0,9008043
+edge_7,#5f9e6e,#5f9e6e,single-copy backbone,1.05,20.0,8942195
+edge_5,#a87f4a,#a87f4a,single-copy backbone,1.05,20.0,7962991
+edge_1,#7d6ba7,#7d6ba7,single-copy backbone,1.00,19.0,7793581
+edge_2,#3f8f9e,#3f8f9e,single-copy backbone,1.00,19.0,2742039
+edge_11,#3f7d5c,#3f7d5c,organelle candidate,10.68,203.0,98177
+edge_8,#a8a8a8,#a8a8a8,low coverage / foreign,0.21,4.0,51498
+edge_9,#c2703d,#c2703d,repeat,1.95,37.0,15807
+edge_4,#a8a8a8,#a8a8a8,low coverage / foreign,0.26,5.0,13947
+edge_10,#b5487f,#b5487f,tandem array,66.79,1269.0,7685
+edge_3,#a8a8a8,#a8a8a8,low coverage / foreign,0.53,10.0,2358

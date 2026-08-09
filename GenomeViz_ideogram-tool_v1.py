@@ -3990,6 +3990,266 @@ def attach_blast_hits(calls: List[SegmentCall], tsv: str, args, log: Log) -> Non
 # --------------------------------------------------------------------------
 # assembly graph figure (deterministic layout, class colours)
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Bandage-style graph rendering
+#
+# Bandage draws each segment as a thick tapered path whose drawn length tracks
+# its sequence length, arranged by a force-directed layout, so a repeat that
+# joins several contigs shows up as a knot. This reproduces that look rather
+# than that layout: it is our own spring model, seeded deterministically, so two
+# runs give the same picture. It will not be pixel-identical to Bandage.
+# --------------------------------------------------------------------------
+def segment_draw_length(length: int, args) -> float:
+    """Drawn length of a segment. Square-root scaled, as a compromise between
+    Bandage's proportional default (which makes a 2 kb repeat invisible next to
+    a 9 Mb contig) and a log scale (which makes them nearly equal)."""
+    return min(max(10.0 + args.graph_length_scale * math.sqrt(max(length, 1)), 12.0),
+               args.graph_max_segment_px)
+
+
+def segment_thickness(depth: Optional[float]) -> float:
+    if depth is None or depth <= 0:
+        return 5.0
+    return min(max(4.0 + 1.7 * math.log10(depth + 1.0), 4.0), 12.0)
+
+
+def bandage_layout(
+    calls: List[SegmentCall], links: List[GfaLink], args, log: Log
+) -> Tuple[Dict[str, Tuple[float, float, float, float]], float, float]:
+    """
+    Force-directed layout over segment ENDS, not segment centres, which is what
+    gives the Bandage look: each segment is a stiff spring of its own drawn
+    length, and each link is a short spring tying one segment's end to another's.
+
+    Returns {segment: (x1, y1, x2, y2)} plus the canvas size.
+    """
+    by_name = {c.name: c for c in calls}
+    names = sorted(by_name)
+    if not names:
+        return {}, 100.0, 100.0
+
+    # two point masses per segment: its start (+) and its end (-)
+    pts: List[str] = []
+    for n in names:
+        pts += [n + "\x00s", n + "\x00e"]
+        idx = {p: i for i, p in enumerate(pts)}
+
+    n_pts = len(pts)
+    rnd = _Rand(20260809)
+    # deterministic ring start, jittered, so components unfold rather than
+    # starting on top of one another
+    radius = 40.0 + 9.0 * math.sqrt(n_pts)
+    pos = []
+    for i in range(n_pts):
+        a = 2 * math.pi * i / n_pts
+        pos.append([
+            radius * math.cos(a) + rnd.uniform(-8, 8),
+            radius * math.sin(a) + rnd.uniform(-8, 8),
+        ])
+
+    springs: List[Tuple[int, int, float, float]] = []  # a, b, rest, strength
+    for n in names:
+        springs.append((idx[n + "\x00s"], idx[n + "\x00e"],
+                        segment_draw_length(by_name[n].length, args), 1.0))
+    for l in links:
+        if l.a not in by_name or l.b not in by_name:
+            continue
+        # a link leaves the end of a + oriented segment and enters the start of
+        # the next; a - orientation flips which terminal is involved
+        a_pt = l.a + ("\x00e" if l.a_orient == "+" else "\x00s")
+        b_pt = l.b + ("\x00s" if l.b_orient == "+" else "\x00e")
+        if a_pt == b_pt:
+            continue
+        springs.append((idx[a_pt], idx[b_pt], 10.0, 0.45))
+
+    k = max(radius / max(math.sqrt(n_pts), 1.0), 14.0)
+    iters = int(min(500, max(80, 9000 / max(n_pts, 1))))
+    if n_pts > 400:
+        log.info(f"graph layout: {n_pts} endpoints, {iters} iterations (this can take a moment)")
+    temp = radius * 0.35
+
+    for step in range(iters):
+        disp = [[0.0, 0.0] for _ in range(n_pts)]
+        # repulsion, all pairs
+        for i in range(n_pts):
+            xi, yi = pos[i]
+            for j in range(i + 1, n_pts):
+                dx = xi - pos[j][0]
+                dy = yi - pos[j][1]
+                d2 = dx * dx + dy * dy
+                if d2 < 1e-6:
+                    dx, dy, d2 = rnd.uniform(-1, 1), rnd.uniform(-1, 1), 1.0
+                d = math.sqrt(d2)
+                f = (k * k) / d
+                ux, uy = dx / d, dy / d
+                disp[i][0] += ux * f
+                disp[i][1] += uy * f
+                disp[j][0] -= ux * f
+                disp[j][1] -= uy * f
+        # springs
+        for a, b, rest, strength in springs:
+            dx = pos[a][0] - pos[b][0]
+            dy = pos[a][1] - pos[b][1]
+            d = math.hypot(dx, dy) or 1e-6
+            f = strength * (d - rest) * 0.9
+            ux, uy = dx / d, dy / d
+            disp[a][0] -= ux * f
+            disp[a][1] -= uy * f
+            disp[b][0] += ux * f
+            disp[b][1] += uy * f
+        # weak pull to the centre so detached components do not drift away
+        for i in range(n_pts):
+            disp[i][0] -= pos[i][0] * 0.012
+            disp[i][1] -= pos[i][1] * 0.012
+        # move, capped by the cooling temperature
+        for i in range(n_pts):
+            dx, dy = disp[i]
+            d = math.hypot(dx, dy) or 1e-6
+            lim = min(d, temp)
+            pos[i][0] += dx / d * lim
+            pos[i][1] += dy / d * lim
+        temp = max(temp * 0.965, 0.6)
+
+    # normalise into a padded canvas
+    xs = [p[0] for p in pos]
+    ys = [p[1] for p in pos]
+    pad = 90.0
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    width = (maxx - minx) + 2 * pad
+    height = (maxy - miny) + 2 * pad + 60
+    out: Dict[str, Tuple[float, float, float, float]] = {}
+    for n in names:
+        s, e = pos[idx[n + "\x00s"]], pos[idx[n + "\x00e"]]
+        out[n] = (
+            s[0] - minx + pad, s[1] - miny + pad + 60,
+            e[0] - minx + pad, e[1] - miny + pad + 60,
+        )
+    return out, width, height
+
+
+def render_bandage_style_svg(
+    calls: List[SegmentCall],
+    links: List[GfaLink],
+    title: str,
+    colours: Dict[str, str],
+    args,
+    log: Log,
+) -> str:
+    """The graph drawn Bandage-fashion: thick tapered segments, force-directed."""
+    by_name = {c.name: c for c in calls}
+    geom, width, height = bandage_layout(calls, links, args, log)
+    colours = colours or assign_segment_colours(calls)
+
+    P = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
+        f'viewBox="0 0 {width:.0f} {height:.0f}" font-family="Helvetica, Arial, sans-serif">',
+        f'<rect width="100%" height="100%" fill="{PALETTE["bg"]}"/>',
+    ]
+    if title:
+        P.append(
+            f'<text x="40" y="34" font-size="17" font-weight="600" '
+            f'fill="{PALETTE["text"]}">{esc(title)}</text>'
+        )
+    P.append(
+        f'<text x="40" y="{54 if title else 34}" font-size="11" fill="{PALETTE["muted"]}">'
+        f'Segment drawn length tracks sequence length; thickness tracks read depth; colour is '
+        f'the inferred class. Layout is our own and is deterministic.</text>'
+    )
+
+    # links behind the segments
+    P.append('<g id="layer-links" fill="none" stroke="#9a9a9a" stroke-opacity="0.75">')
+    for l in links:
+        if l.a not in geom or l.b not in geom:
+            continue
+        ax, ay = (geom[l.a][2], geom[l.a][3]) if l.a_orient == "+" else (geom[l.a][0], geom[l.a][1])
+        bx, by = (geom[l.b][0], geom[l.b][1]) if l.b_orient == "+" else (geom[l.b][2], geom[l.b][3])
+        if l.a == l.b:
+            # self-link: a small loop off the relevant terminal
+            P.append(
+                f'<path d="M {ax:.1f} {ay:.1f} c 16 -20, 40 -20, 30 2 c -6 14, -26 12, -30 -2" '
+                f'stroke-width="1.8"/>'
+            )
+            continue
+        mx, my = (ax + bx) / 2, (ay + by) / 2
+        # bow the link slightly so parallel links stay distinguishable
+        nx, ny = -(by - ay), (bx - ax)
+        nlen = math.hypot(nx, ny) or 1.0
+        bow = min(18.0, math.hypot(bx - ax, by - ay) * 0.22)
+        cx, cy = mx + nx / nlen * bow, my + ny / nlen * bow
+        P.append(
+            f'<path d="M {ax:.1f} {ay:.1f} Q {cx:.1f} {cy:.1f} {bx:.1f} {by:.1f}" '
+            f'stroke-width="1.6"/>'
+        )
+    P.append("</g>")
+
+    # segments as thick tapered paths
+    P.append('<g id="layer-segments" stroke-linecap="round" fill="none">')
+    for name, (x1, y1, x2, y2) in sorted(geom.items(), key=lambda kv: -by_name[kv[0]].length):
+        c = by_name[name]
+        colour = colours.get(name, "#cfcfcf")
+        w = segment_thickness(c.depth)
+        # a gentle bow, so nothing looks like a ruler
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        nx, ny = -(y2 - y1), (x2 - x1)
+        nlen = math.hypot(nx, ny) or 1.0
+        bow = min(26.0, math.hypot(x2 - x1, y2 - y1) * 0.14)
+        cx, cy = mx + nx / nlen * bow, my + ny / nlen * bow
+        d = f"M {x1:.1f} {y1:.1f} Q {cx:.1f} {cy:.1f} {x2:.1f} {y2:.1f}"
+        # dark casing then the colour, which is what gives Bandage its solidity
+        P.append(f'<path d="{d}" stroke="{PALETTE["bar_edge"]}" stroke-width="{w + 2.2:.1f}" '
+                 f'stroke-opacity="0.5"/>')
+        P.append(f'<path d="{d}" stroke="{colour}" stroke-width="{w:.1f}"/>')
+        if c.at_rich:
+            P.append(f'<path d="{d}" stroke="{CLASS_COLOUR["at_rich"]}" '
+                     f'stroke-width="{w:.1f}" stroke-dasharray="3 5"/>')
+    P.append("</g>")
+
+    # labels
+    label_all = len(calls) <= args.graph_label_limit
+    P.append(f'<g id="layer-labels" font-size="9.5" fill="{PALETTE["text"]}">')
+    for name, (x1, y1, x2, y2) in geom.items():
+        c = by_name[name]
+        if not label_all and c.cls == "backbone" and c.length < args.backbone_min_length:
+            continue
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        nx, ny = -(y2 - y1), (x2 - x1)
+        nlen = math.hypot(nx, ny) or 1.0
+        off = segment_thickness(c.depth) + 11
+        lx, ly = mx + nx / nlen * off, my + ny / nlen * off
+        cn = f"{c.copy_number:.1f}x" if c.copy_number is not None else "?"
+        P.append(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" font-weight="600">'
+            f'{esc(name)}</text>'
+        )
+        P.append(
+            f'<text x="{lx:.1f}" y="{ly + 10:.1f}" text-anchor="middle" font-size="8" '
+            f'fill="{PALETTE["muted"]}">{human_bp(c.length)} &#183; {cn}</text>'
+        )
+    P.append("</g>")
+
+    P.append(_graph_legend_svg(calls, height))
+    P.append("</svg>")
+    return "\n".join(P)
+
+
+def _graph_legend_svg(calls: List[SegmentCall], height: float) -> str:
+    out = [f'<g id="legend" font-size="10" fill="{PALETTE["text"]}">']
+    x, y = 40.0, height - 24.0
+    n_bb = sum(1 for c in calls if c.cls == "backbone")
+    out.append(
+        f'<text x="{x}" y="{y - 16:.1f}" fill="{PALETTE["muted"]}" font-size="9.5">'
+        f'{n_bb} backbone segment(s), each its own colour and reused in the chromosome figure. '
+        f'Other colours are by inferred class:</text>'
+    )
+    for cls_name in [c for c in CLASS_COLOUR if c != "backbone" and any(x2.cls == c for x2 in calls)]:
+        out.append(f'<rect x="{x:.1f}" y="{y - 8:.1f}" width="11" height="11" rx="2" '
+                   f'fill="{CLASS_COLOUR[cls_name]}"/>')
+        out.append(f'<text x="{x + 16:.1f}" y="{y + 1:.1f}">{esc(CLASS_LABEL[cls_name])}</text>')
+        x += 30 + 6.0 * len(CLASS_LABEL[cls_name])
+    out.append("</g>")
+    return "\n".join(out)
+
+
 GRAPH_COL_W, GRAPH_ROW_H, GRAPH_NODE_H = 210.0, 88.0, 26.0
 
 
@@ -4568,7 +4828,9 @@ def render_paired_svg(
     """
     adj = build_adjacency(links)
     pos, gw, gh, _ = _graph_layout(calls, adj)
-    graph_svg = render_graph_svg(calls, links, "", colours)
+    graph_svg = graph_svg_for_style(calls, links, "", colours, args, log)
+    if args.graph_style == "bandage":
+        gw, gh = _svg_width(graph_svg), _svg_height(graph_svg)
     # the combined figure carries the title, so the panels must not repeat it
     real_title = model.title
     model.title = "Resolved into linear chromosomes"
@@ -4787,8 +5049,14 @@ def render_graph_figure(
         )
         return None
     with open(path, "w") as fh:
-        fh.write(render_graph_svg(calls, links, title, colours))
+        fh.write(graph_svg_for_style(calls, links, title, colours, args, log))
     return path
+
+
+def graph_svg_for_style(calls, links, title, colours, args, log) -> str:
+    if args.graph_style == "bandage":
+        return render_bandage_style_svg(calls, links, title, colours, args, log)
+    return render_graph_svg(calls, links, title, colours)
 
 
 def write_figures(
@@ -5181,6 +5449,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--max-leader-lines", type=int, default=40,
                    help="leader lines drawn between the two panels of the paired figure "
                         "(default 40); colour still identifies segments beyond that")
+    g.add_argument("--graph-style", choices=["bandage", "layered"], default="bandage",
+                   help="'bandage' draws thick tapered segments in a force-directed layout, "
+                        "like Bandage; 'layered' uses boxes in BFS layers (default: bandage)")
+    g.add_argument("--graph-length-scale", type=float, default=0.10,
+                   help="drawn pixels per sqrt(bp) for a segment (default 0.10)")
+    g.add_argument("--graph-max-segment-px", type=float, default=300.0,
+                   help="longest a segment may be drawn (default 300)")
+    g.add_argument("--graph-label-limit", type=int, default=40,
+                   help="label every segment up to this many; above it, only the notable ones")
     g.add_argument("--bandage-image", metavar="FILE",
                    help="a real Bandage export (PNG, JPEG or SVG) to use as the left panel of "
                         "the paired figure instead of our redraw. Load the emitted "
@@ -5188,7 +5465,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "colour.")
     g.add_argument("--bandage-max-width", type=float, default=1400.0,
                    help="cap on the width of an embedded Bandage image (default 1400)")
-    g.add_argument("--rotate-graph", action=argparse.BooleanOptionalAction, default=True,
+    g.add_argument("--rotate-graph", action=argparse.BooleanOptionalAction, default=False,
                    help="turn our graph redraw a quarter turn so the paired figure is narrower "
                         "and taller (default: on). Labels then read bottom-to-top.")
     g.add_argument("--max-graph-nodes", type=int, default=300,

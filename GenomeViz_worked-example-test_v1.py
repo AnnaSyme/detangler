@@ -46,17 +46,21 @@ SEGMENTS = {
     "edge_4": (13_947, 5),
 }
 
+# Orientations match the L lines of the real Flye GFA (flye_assembly_graph.gfa).
+# They matter: the end-capping and feature-placement logic assesses the two
+# physical ends of a segment independently, so e.g. edge_9 must sit on the
+# OPPOSITE end of edge_2 from edge_8, as it does in the real graph.
 LINKS = [
-    ("edge_1", "+", "edge_9", "+"),
+    ("edge_1", "+", "edge_9", "-"),
     ("edge_1", "-", "edge_9", "-"),
     ("edge_2", "+", "edge_8", "+"),
-    ("edge_2", "+", "edge_9", "+"),
-    ("edge_3", "+", "edge_5", "+"),
-    ("edge_3", "+", "edge_6", "+"),
-    ("edge_3", "+", "edge_9", "+"),
-    ("edge_5", "+", "edge_10", "+"),
+    ("edge_2", "-", "edge_9", "-"),
+    ("edge_3", "+", "edge_5", "-"),
+    ("edge_3", "+", "edge_6", "-"),
+    ("edge_3", "-", "edge_9", "-"),
+    ("edge_5", "-", "edge_10", "-"),
     ("edge_7", "+", "edge_8", "+"),
-    ("edge_7", "+", "edge_9", "+"),
+    ("edge_7", "-", "edge_9", "-"),
     ("edge_10", "+", "edge_10", "+"),  # self-loop: tandem array
     ("edge_11", "+", "edge_11", "+"),  # self-loop: circular
 ]
@@ -85,11 +89,11 @@ BASELINE_GC = 0.48
 
 
 def load_tool():
-    spec = importlib.util.spec_from_file_location("karyoglyph", TOOL)
+    spec = importlib.util.spec_from_file_location("detangler", TOOL)
     if spec is None or spec.loader is None:
         raise SystemExit(f"could not load {TOOL}")
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["karyoglyph"] = mod
+    sys.modules["detangler"] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -198,6 +202,59 @@ def _(model, kg):
         assert token in reason, f"reason missing '{token}': {reason}"
     assert 9.0 <= (c.copy_number or 0) <= 13.0, f"copy number {c.copy_number}"
     return f"{c.copy_number:.1f} copies, {c.reasons[0][:70]}..."
+
+
+# --------------------------------------------------------------------------
+# Organelle subtype checks, added with the plastid/mitochondrion split.
+# Synthetic sequences only: they test the inverted-repeat detector and the
+# subtype decision, not any real plastome.
+# --------------------------------------------------------------------------
+@check("IR detector finds a planted 12 kb inverted-repeat pair, and only that")
+def _(model, kg):
+    base = make_sequence(150_000, 0.37)
+    assert kg.find_inverted_repeat_pair(base) is None, "false positive on a plain sequence"
+    block = base[30_000:42_000]
+    planted = base[:110_000] + kg.revcomp(block) + base[122_000:]
+    assert len(planted) == 150_000
+    hit = kg.find_inverted_repeat_pair(planted)
+    assert hit is not None, "planted inverted pair was missed"
+    size, first, second = hit
+    assert abs(size - 12_000) <= 1_200, f"size estimate {size:,} vs planted 12,000"
+    assert abs(first - 30_000) <= 600, f"first copy placed at {first:,}"
+    assert abs(second - 110_000) <= 600, f"second copy placed at {second:,}"
+    return f"~{size:,} bp block at ~{first:,} and ~{second:,}; plain sequence stays clean"
+
+
+@check("subtype call: plastid-like needs the IR pair, mitochondrion-like its absence")
+def _(model, kg):
+    base = make_sequence(150_000, 0.37)
+    plastome_like = base[:110_000] + kg.revcomp(base[30_000:50_000]) + base[130_000:]
+    sub, why, ir = kg.classify_organelle_subtype(len(plastome_like), plastome_like, 0.37, 0.48)
+    assert sub == "plastid", f"plastome-like sequence called {sub}"
+    assert "plastid-like" in why and "inverted" in why, why
+    assert ir is not None
+
+    mito_like = make_sequence(60_000, 0.32)
+    sub2, why2, ir2 = kg.classify_organelle_subtype(60_000, mito_like, 0.32, 0.48)
+    assert sub2 == "mitochondrion", f"60 kb IR-free sequence called {sub2}"
+    assert "size" in why2 and "its own" in why2, f"no hedge on size: {why2}"
+    assert ir2 is None
+
+    sub3, why3, _ir3 = kg.classify_organelle_subtype(150_000, "", None, None)
+    assert sub3 == "unresolved", f"sequence-less candidate called {sub3}"
+    assert "cannot separate" in why3, why3
+    return "plastid with IR, mitochondrion without, unresolved when there is no sequence"
+
+
+@check("edge_11 comes out mitochondrion-like, never plastid-like")
+def _(model, kg):
+    c = next(x for x in model.segment_calls if x.name == "edge_11")
+    assert c.organelle_subtype == "mitochondrion", f"subtype was {c.organelle_subtype}"
+    reason = " ".join(c.reasons)
+    assert "mitochondrion-like" in reason, reason
+    assert "plastid-like" not in reason, reason
+    assert c.ir_block is None, f"phantom inverted repeat: {c.ir_block}"
+    return "mitochondrion-like: no IR pair, and 98.2 kb is below the typical plastome range"
 
 
 @check("edge_10 is a tandem array of ~67 copies")
@@ -355,7 +412,7 @@ def main() -> int:
     a = ap.parse_args()
 
     kg = load_tool()
-    tmp = a.keep or tempfile.mkdtemp(prefix="karyoglyph_test_")
+    tmp = a.keep or tempfile.mkdtemp(prefix="detangler_test_")
     os.makedirs(tmp, exist_ok=True)
     fixture = write_fixture(os.path.join(tmp, "fixture"))
     out_dir = os.path.join(tmp, "out")

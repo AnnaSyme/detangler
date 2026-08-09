@@ -19,17 +19,45 @@ mitochondrion (design mockup; the drawing code is being updated to match):
 ![Paired figure: assembly graph resolved into a chromosome
 hypothesis](detangler_figure-mockup_v1.svg)
 
+## How to run
+
+The simplest run needs only the assembly graph (if the GFA carries
+sequence, nothing else is required):
+
+```
+python detangler.py --gfa assembly_graph.gfa --out-dir results --prefix myasm
+```
+
+With more evidence (index, segment mapping, read coverage):
+
+```
+python detangler.py --fai asm.fa.fai --gfa asm.gfa --paf segs_to_asm.paf \
+    --coverage cov.regions.bed.gz --out-dir results --prefix myasm
+```
+
+No data handy? Generate synthetic demo data and run on it:
+
+```
+python detangler.py --demo demo_data --out-dir results --prefix demo
+```
+
+To override any of the tool's calls, edit the emitted
+`results/myasm_karyotype.yaml` and re-run from it:
+
+```
+python detangler.py --config results/myasm_karyotype.yaml --out-dir results --prefix myasm
+```
+
 ## Required inputs
 
-One sequence input:
+- `--gfa` the GFA v1 assembly graph (the file Bandage opens). If it carries
+  sequence — Flye's does — this is the only input needed.
+
+If the GFA lacks sequence, add one sequence source:
 
 - `--fasta` assembly FASTA (also yields GC and N content), or
 - `--fai` samtools faidx index, or
 - `--assembly-report` NCBI assembly report
-
-Plus, for graph-based inference (the main mode):
-
-- `--gfa` the GFA v1 assembly graph (the file Bandage opens)
 
 ## Optional flags (the useful ones)
 

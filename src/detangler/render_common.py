@@ -39,7 +39,7 @@ from .model import (
 MARGIN_L = 86
 MARGIN_R = 40
 MARGIN_T = 96
-BAR_W = 48
+BAR_W = 64
 COV_W = 20
 GAP = 96
 MAX_BAR_H = 620
@@ -112,11 +112,12 @@ class Layout:
 # idea (a minimumNodeLength floor under a length-proportional scale); the point
 # of pinning it here is that the graph panel and the chromosome panel must agree,
 # or a 15 kb telomeric repeat looks like two different sizes in one figure.
-# A full ribbon width. A round-capped stroke is never shorter than its own
-# width however short the path is, so anything below this cannot be drawn
-# honestly in the graph panel - and the chromosome panel then uses the same
-# floor so the two agree.
-MIN_DRAWN_PX = BAR_W
+# Comfortably longer than a ribbon is wide. A round-capped stroke is never
+# shorter than its own width, so one ribbon width is the hard minimum - but a
+# contig drawn at exactly that is a square, and you cannot see that it has two
+# distinct ends, or which end its neighbours attach to. Both panels use this
+# same floor so a contig stays the same size in each.
+MIN_DRAWN_PX = BAR_W * 2.2
 
 
 def drawn_length_px(length: int, px_per_bp: float) -> float:

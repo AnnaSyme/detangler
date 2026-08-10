@@ -659,6 +659,9 @@ class Model:
         self.inputs: Dict[str, str] = {}
         self.settings: Dict[str, object] = {}
         self.warnings: List[str] = []
+        # {segment: (places drawn, copy number)} where the depth does not support
+        # the number of places the hypothesis puts it
+        self.overplaced: Dict[str, Tuple[int, float]] = {}
         self.title: str = "Assembly ideogram"
         # graph-first mode
         self.segment_calls: List["SegmentCall"] = []
@@ -917,7 +920,7 @@ def model_from_hypothesis(
     by_name = {c.name: c for c in calls}
     adj = build_adjacency(links)
     end_adj = build_end_adjacency(links)
-    colours = assign_segment_colours(calls)
+    colours = assign_segment_colours(calls, links)
     telomeric = telomeric_segments(calls, args)
     model = Model()
     model.settings = {"order": args.order, "coverage": False}
@@ -1195,6 +1198,42 @@ def model_from_hypothesis(
                     0.0,
                 )
             )
+
+    # ---- does the depth support the number of places we drew it? ----
+    # A segment drawn at N places has to be present N times, and depth is the
+    # only independent handle on that. Drawing a segment at five chromosome ends
+    # while calling it two copies is an internal contradiction, and the tool used
+    # to make exactly that claim in silence. It is not resolved here - the depth
+    # may be depressed by composition, or the placement may be wrong - but it is
+    # no longer left for the reader to notice.
+    placements: Dict[str, int] = defaultdict(int)
+    for rec in model.sequences:
+        for _bs, _be, seg, _col in rec.blocks:
+            placements[seg] += 1
+        for side in rec.caps.values():
+            for seg, _col, _length in side:
+                placements[seg] += 1
+
+    for seg, n in sorted(placements.items()):
+        if n <= 1 or seg not in by_name:
+            continue
+        call = by_name[seg]
+        cn = call.copy_number
+        if cn is None or cn + args.placement_tolerance >= n:
+            continue
+        gc_note = ""
+        if call.gc is not None and call.gc < 0.25:
+            gc_note = (
+                f" Its GC is {call.gc * 100:.0f}%, and depth over sequence that "
+                f"AT-rich is often understated, so the copy number may be the "
+                f"unreliable half of this."
+            )
+        model.overplaced[seg] = (n, cn)
+        model.warnings.append(
+            f"{seg} is drawn in {n} places but its depth implies about "
+            f"{cn:.1f} copies ({call.depth:.0f}x). Either it does not sit in all "
+            f"of them, or its depth is not a fair measure of its abundance.{gc_note}"
+        )
 
     model.title = args.title or "Chromosome hypothesis from the assembly graph"
     return model

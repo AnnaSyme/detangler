@@ -86,7 +86,12 @@ def render_paired_svg(
     pos, gw, gh, _ = _graph_layout(calls, adj)
     # the combined figure carries the title, so the panels must not repeat it
     real_title = model.title
-    model.title = "Hypothesis of chromosome structure"
+    # Both panel headings are drawn by the COMBINED figure, not one by each
+    # panel. Drawn inside the panel the right-hand heading inherits that panel's
+    # offset and sits on a different baseline from the left one, which reads as
+    # a size difference even though both are the same size.
+    right_label = "Hypothesis of chromosome structure"
+    model.title = ""
     try:
         ideo_svg = render_svg(model)
         lay, _, _, _ = ideogram_geometry(model)
@@ -133,18 +138,24 @@ def render_paired_svg(
         gw_eff, gh_eff = gw, gh
         left_label = "Assembly graph"
 
-    ox = gw_eff + PAIR_GUTTER  # x offset of the ideogram panel
-    width = ox + iw
-    top = 84.0
-    height = max(gh_eff, ih) + top
+    # STACKED, not side by side. The graph panel comes out wide and shallow and
+    # the chromosome panel narrow and deep, so putting them side by side left
+    # most of the canvas empty and forced everything to be shrunk to fit. One
+    # above the other fills the space, which means both can be drawn larger.
+    top = 44.0
+    # The graph panel carries its own bottom padding, so a symmetric gap put the
+    # lower heading nearer the panel ABOVE it than the one it labels. The gap is
+    # tightened and the heading sits just above its own panel.
+    gap = PAIR_GUTTER * 0.55
+    width = max(gw_eff, iw) + 60
+    ideo_y = top + gh_eff + gap
+    height = ideo_y + ih + 20
 
     P = [
         f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
         f'width="{width:.0f}" height="{height:.0f}" '
         f'viewBox="0 0 {width:.0f} {height:.0f}" font-family="Helvetica, Arial, sans-serif">',
         f'<rect width="100%" height="100%" fill="{PALETTE["bg"]}"/>',
-        f'<text x="60" y="44" font-size="{FS_TITLE}" font-weight="600" '
-        f'fill="{PALETTE["text"]}">{esc(model.title)}</text>',
         f'<text x="60" y="{top - 10:.0f}" font-size="{FS_HEADING}" font-weight="600" '
         f'fill="{PALETTE["text"]}">{esc(left_label)}</text>',
     ]
@@ -155,7 +166,11 @@ def render_paired_svg(
         P.append(_place_svg(graph_svg, 0, top, rotate=-90))
     else:
         P.append(_place_svg(graph_svg, 0, top))
-    P.append(_place_svg(ideo_svg, ox, top))
+    P.append(_place_svg(ideo_svg, 0, ideo_y))
+    P.append(
+        f'<text x="60" y="{ideo_y - 10:.0f}" font-size="{FS_HEADING}" '
+        f'font-weight="600" fill="{PALETTE["text"]}">{esc(right_label)}</text>'
+    )
     P.append("</svg>")
     return "\n".join(P)
 

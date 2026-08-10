@@ -89,11 +89,27 @@ def _ideogram_frame(model: Model) -> Dict[str, object]:
     # v9: no summary paragraph under the panel title. The reasoning belongs in the
     # report; the figure carries only what points at something it draws.
     head_lines: List[str] = []
-    header_h = 54 + 26 + 15 * (probe.max_label_lines - 1)
+    # Caps hang off the ends of a molecule, so the tallest stack of top caps has
+    # to be cleared or it rides up over the panel title.
+    top_caps = max(
+        (
+            sum(drawn_length_px(L, probe.scale) for _n, _c, L in s.caps.get("top", []))
+            for s in model.sequences
+        ),
+        default=0.0,
+    )
+    header_h = 54 + 26 + 15 * (probe.max_label_lines - 1) + top_caps
+    bottom_caps = max(
+        (
+            sum(drawn_length_px(L, probe.scale) for _n, _c, L in s.caps.get("bottom", []))
+            for s in model.sequences
+        ),
+        default=0.0,
+    )
 
     lay = Layout(model, show_cov, header_h)
     legend_svg, legend_bottom = _legend_svg(model, lay)
-    total_h = max(legend_bottom + 26, header_h + MAX_BAR_H + 90)
+    total_h = max(legend_bottom + 26, header_h + MAX_BAR_H + bottom_caps + 90)
     return {
         "lay": lay,
         "head_lines": head_lines,
@@ -135,19 +151,9 @@ def render_svg(model: Model, interactive: bool = False) -> str:
         f'fill="{PALETTE["text"]}">{esc(model.title)}</text>'
     )
 
-    # ---- scale ruler ----
-    add(f'<g id="ruler" stroke="{PALETTE["grid"]}">')
-    tick = _nice_tick(lay.max_len)
-    v = 0
-    while v <= lay.max_len:
-        y = header_h + v * lay.scale
-        add(f'<line x1="{MARGIN_L - 46}" y1="{y:.1f}" x2="{MARGIN_L - 12}" y2="{y:.1f}"/>')
-        add(
-            f'<text x="{MARGIN_L - 50}" y="{y + 4:.1f}" font-size="10.5" text-anchor="end" '
-            f'fill="{PALETTE["muted"]}" stroke="none">{_tick_label(v)}</text>'
-        )
-        v += tick
-    add("</g>")
+    # No scale ruler. Each molecule carries its own size label, and a bare
+    # axis down the left invited reading positions off it that a hypothesis
+    # does not actually claim.
 
     # ---- tangle arcs (behind the bars) ----
     add('<g id="layer-tangles">')
@@ -220,15 +226,15 @@ def render_svg(model: Model, interactive: bool = False) -> str:
             )
             add(
                 f'<text x="{ccx:.1f}" y="{ccy + r * 2 + FS_SUB + 6:.1f}" '
-                f'font-size="{FS_SUB}" text-anchor="middle" fill="{PALETTE["muted"]}">'
-                f'{human_bp(s.length)}</text>'
+                f'font-size="{FS_SUB + 5}" font-weight="600" text-anchor="middle" '
+                f'fill="{PALETTE["text"]}">{human_bp(s.length)}</text>'
             )
             continue
 
         add(
             f'<path d="{_bar_path(x, top, BAR_W, h, 0.0 if s.caps.get("top") else rx, 0.0 if s.caps.get("bottom") else rx)}" '
-            f'fill="{fill}" fill-opacity="0.82" stroke="{PALETTE["bar_edge"]}" '
-            f'stroke-width="0.9"{battrs}/>'
+            f'fill="{fill}" fill-opacity="0.82" stroke="none" '
+            f'{battrs}/>'
         )
 
         # Segment blocks: the same colour the segment has in the graph figure, so
@@ -256,7 +262,7 @@ def render_svg(model: Model, interactive: bool = False) -> str:
                 add(
                     f'<path d="{_bar_path(x + inset, y1, bw, y2 - y1, rt, rb)}" '
                     f'fill="{colour}" fill-opacity="{0.95 if s.blocks_tile else 0.92}" '
-                    f'stroke="#ffffff" stroke-width="0.6"{bl}/>'
+                    f'stroke="none"{bl}/>'
                 )
                 # v9: the segment NUMBER, set inside the block, inked white or
                 # dark for contrast against that block's own colour
@@ -306,7 +312,7 @@ def render_svg(model: Model, interactive: bool = False) -> str:
         # re-stroke the outline so bands do not spill past the rounded ends
         add(
             f'<path d="{_bar_path(x, top, BAR_W, h, 0.0 if s.caps.get("top") else rx, 0.0 if s.caps.get("bottom") else rx)}" '
-            f'fill="none" stroke="{PALETTE["bar_edge"]}" stroke-width="1.1"/>'
+            f'fill="none" stroke="none"/>'
         )
 
         # Repeats attached to a free end, drawn hanging OFF the bar rather than
@@ -329,10 +335,21 @@ def render_svg(model: Model, interactive: bool = False) -> str:
                     rt = 0.0
                     rb = rx if ci == n_side - 1 else 0.0
                 stacked += cap_h
-                add(
-                    f'<path d="{_bar_path(x, cy, BAR_W, cap_h, rt, rb)}" fill="{colour}" '
-                    f'fill-opacity="0.95" stroke="{PALETTE["bar_edge"]}" stroke-width="1.1"/>'
-                )
+                # A cap means "the graph attaches this here", NOT "this is a
+                # telomere". Where the segment's depth cannot support the number
+                # of ends it is drawn on, it is drawn faint and dashed so the
+                # figure stops asserting something the coverage contradicts.
+                if seg in model.overplaced:
+                    add(
+                        f'<path d="{_bar_path(x, cy, BAR_W, cap_h, rt, rb)}" '
+                        f'fill="{colour}" fill-opacity="0.30" stroke="{colour}" '
+                        f'stroke-width="2" stroke-dasharray="5 4"/>'
+                    )
+                else:
+                    add(
+                        f'<path d="{_bar_path(x, cy, BAR_W, cap_h, rt, rb)}" '
+                        f'fill="{colour}" fill-opacity="0.95" stroke="none"/>'
+                    )
                 add(
                     f'<text x="{x + BAR_W / 2:.1f}" y="{cy + cap_h / 2 + FS_SUB * 0.36:.1f}" '
                     f'font-size="{FS_SUB + 1}" text-anchor="middle" fill="{_text_on(colour)}" '
@@ -344,8 +361,8 @@ def render_svg(model: Model, interactive: bool = False) -> str:
         n_top = len(s.caps.get("top", []))
         add(
             f'<text x="{x + BAR_W / 2:.1f}" y="{top + h + 20 + sum(drawn_length_px(L, lay.scale) for _n, _c, L in s.caps.get("bottom", [])):.1f}" '
-            f'font-size="{FS_SUB}" text-anchor="middle" fill="{PALETTE["muted"]}">'
-            f'{human_bp(s.length)}</text>'
+            f'font-size="{FS_SUB + 5}" font-weight="600" text-anchor="middle" '
+            f'fill="{PALETTE["text"]}">{human_bp(s.length)}</text>'
         )
     add("</g>")
 
@@ -419,7 +436,10 @@ def _unassigned_panel_svg(model: Model, lay: Layout, interactive: bool) -> str:
     )
 
     col_w = BAR_W * 2.4
-    bw = BAR_W * 0.62
+    # full chromosome width: these are contigs like any other, they just have no
+    # molecule to sit on. Drawing them narrower implied they were a lesser kind
+    # of thing rather than simply unplaced.
+    bw = float(BAR_W)
     max_len = max((s.length for s in items), default=1)
     top = y + 34.0
     max_h = 210.0
@@ -442,7 +462,7 @@ def _unassigned_panel_svg(model: Model, lay: Layout, interactive: bool) -> str:
         out.append(
             f'<rect x="{cx:.1f}" y="{top:.1f}" width="{bw:.1f}" height="{h:.1f}" '
             f'rx="{bw / 2:.1f}" ry="{bw / 2:.1f}" fill="{colour}" fill-opacity="0.9" '
-            f'stroke="{PALETTE["bar_edge"]}" stroke-width="1.1"{attrs}/>'
+            f'stroke="none"{attrs}/>'
         )
         if h >= FS_LABEL + 4:
             out.append(
@@ -452,8 +472,8 @@ def _unassigned_panel_svg(model: Model, lay: Layout, interactive: bool) -> str:
             )
         out.append(
             f'<text x="{cx + bw / 2:.1f}" y="{top + h + FS_SUB + 4:.1f}" '
-            f'font-size="{FS_SUB}" text-anchor="middle" fill="{PALETTE["muted"]}">'
-            f'{human_bp(s.length)}</text>'
+            f'font-size="{FS_SUB + 5}" font-weight="600" text-anchor="middle" '
+            f'fill="{PALETTE["text"]}">{human_bp(s.length)}</text>'
         )
     out.append("</g>")
     return "\n".join(out)

@@ -263,6 +263,51 @@ def bandage_layout(
     return out, width, height
 
 
+def _trim_polyline(
+    points: List[Tuple[float, float]], trim: float
+) -> List[Tuple[float, float]]:
+    """
+    Shorten a polyline by `trim` at each end.
+
+    Ribbons are stroked with round caps, which add half a stroke width beyond
+    each endpoint. Left uncorrected a contig draws one ribbon-width longer than
+    it is, which is invisible on a 9 Mb contig and enormous on a 2 kb one - it
+    was why a short contig looked several times bigger in the graph than on the
+    chromosome. Trimming by half a width first makes the cap land exactly on the
+    true endpoint.
+    """
+    if len(points) < 2:
+        return points
+    segs = [
+        math.hypot(points[i + 1][0] - points[i][0], points[i + 1][1] - points[i][1])
+        for i in range(len(points) - 1)
+    ]
+    total = sum(segs)
+    if total <= 2 * trim:
+        # too short to trim: collapse to the midpoint and let the caps be it
+        mid = len(points) // 2
+        return [points[mid], points[mid]]
+
+    def walk(pts, sl, want):
+        acc = 0.0
+        for i, seg in enumerate(sl):
+            if acc + seg >= want:
+                t = (want - acc) / seg if seg else 0.0
+                x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t
+                y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t
+                return [(x, y)] + list(pts[i + 1:])
+            acc += seg
+        return list(pts[-1:])
+
+    head = walk(points, segs, trim)
+    rev = list(reversed(head))
+    rsegs = [
+        math.hypot(rev[i + 1][0] - rev[i][0], rev[i + 1][1] - rev[i][1])
+        for i in range(len(rev) - 1)
+    ]
+    return list(reversed(walk(rev, rsegs, trim)))
+
+
 def _smooth_path(points: List[Tuple[float, float]]) -> str:
     """A rounded path through every bead of a contig's polyline."""
     if len(points) == 1:
@@ -347,7 +392,7 @@ def render_bandage_style_svg(
             P.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" '
                      f'stroke="{colour}" stroke-width="{w:.1f}"/>')
             continue
-        d = _smooth_path(pointset)
+        d = _smooth_path(_trim_polyline(pointset, w / 2.0))
         P.append(f'<path d="{d}" stroke="{PALETTE["bar_edge"]}" stroke-width="{w + 2.0:.1f}" '
                  f'stroke-linecap="round" stroke-linejoin="round"/>')
         P.append(f'<path d="{d}" stroke="{colour}" stroke-width="{w:.1f}" '

@@ -112,7 +112,11 @@ class Layout:
 # idea (a minimumNodeLength floor under a length-proportional scale); the point
 # of pinning it here is that the graph panel and the chromosome panel must agree,
 # or a 15 kb telomeric repeat looks like two different sizes in one figure.
-MIN_DRAWN_PX = BAR_W * 0.6
+# A full ribbon width. A round-capped stroke is never shorter than its own
+# width however short the path is, so anything below this cannot be drawn
+# honestly in the graph panel - and the chromosome panel then uses the same
+# floor so the two agree.
+MIN_DRAWN_PX = BAR_W
 
 
 def drawn_length_px(length: int, px_per_bp: float) -> float:

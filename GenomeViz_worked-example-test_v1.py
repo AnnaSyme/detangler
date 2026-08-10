@@ -18,14 +18,16 @@ Run:  python3 GenomeViz_worked-example-test_v1.py [--keep DIR]
 from __future__ import annotations
 
 import argparse
+import importlib
 import importlib.util
+import types
 import os
 import shutil
 import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TOOL = os.path.join(HERE, "GenomeViz_ideogram-tool_v1.py")
+PACKAGE = os.path.join(HERE, "src", "detangler")
 
 # Reference values for validation (Fusarium graminearum PH-1 reference assembly)
 EXPECTED_NUCLEAR = 36_563_796
@@ -89,13 +91,49 @@ BASELINE_GC = 0.48
 
 
 def load_tool():
-    spec = importlib.util.spec_from_file_location("detangler", TOOL)
-    if spec is None or spec.loader is None:
-        raise SystemExit(f"could not load {TOOL}")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["detangler"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+    """
+    The whole package, presented as one namespace.
+
+    The checks were written against a single flat module. Rather than rewrite
+    every reference when the code was split into src/detangler/, the submodules
+    are merged into one object here - the tests care about behaviour, not about
+    which file a symbol now lives in.
+    """
+    sys.path.insert(0, os.path.join(HERE, "src"))
+    import detangler as pkg
+
+    subs = [
+        importlib.import_module(f"detangler.{name}")
+        for name in (
+            "common", "records", "parsers", "graph", "sequence", "palette", "calls",
+            "hypotheses", "model", "render_common", "render_ideogram", "render_graph",
+            "render_paired", "report", "blast", "demo", "cli",
+        )
+    ]
+
+    class _Flat(types.ModuleType):
+        """
+        Reads like the old flat module; writes reach the real one.
+
+        Some checks monkey-patch a function to intercept it. Setting the
+        attribute on a merged copy would be silently ignored, because the
+        caller looks the name up in ITS own module namespace - so a write here
+        is forwarded to every submodule that binds that name.
+        """
+
+        def __setattr__(self, key, value):
+            for sub in subs:
+                if hasattr(sub, key):
+                    setattr(sub, key, value)
+            object.__setattr__(self, key, value)
+
+    flat = _Flat("detangler_flat")
+    for sub in subs:
+        for key, value in vars(sub).items():
+            if not key.startswith("__"):
+                object.__setattr__(flat, key, value)
+    object.__setattr__(flat, "__version__", pkg.VERSION)
+    return flat
 
 
 class LCG:

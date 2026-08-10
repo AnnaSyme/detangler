@@ -138,15 +138,22 @@ def bandage_layout(
             idxs.append(len(pts) - 1)
         chain[n] = idxs
         for b in range(beads - 1):
-            springs.append((idxs[b], idxs[b + 1], rest, 6.0))
-        # a weak brace across every second bead keeps a contig from crumpling
-        # into a ball while still letting it curve
+            springs.append((idxs[b], idxs[b + 1], rest, 30.0))
+        # a brace across every second bead keeps a contig from crumpling into a
+        # ball while still letting it curve
         for b in range(beads - 2):
-            springs.append((idxs[b], idxs[b + 2], rest * 1.94, 0.55))
+            springs.append((idxs[b], idxs[b + 2], rest * 1.94, 3.0))
 
     def terminal(seg: str, end: str) -> int:
         return chain[seg][0] if end == "s" else chain[seg][-1]
 
+    # Beads that a spring is holding together must NOT also repel each other.
+    # Leaving them in the all-pairs sum inflates every chain - a bead pair at
+    # rest length still feels k^2/d of push, so the contig stretches until the
+    # spring can match it, and its drawn length stops meaning anything.
+    bonded: Set[Tuple[int, int]] = {
+        (min(a, b), max(a, b)) for a, b, _rest, _st in springs
+    }
     link_pairs: Set[Tuple[int, int]] = set()
     for l in links:
         if l.a == l.b or l.a not in chain or l.b not in chain:
@@ -155,11 +162,12 @@ def bandage_layout(
         b_i = terminal(l.b, "s" if l.b_orient == "+" else "e")
         if a_i == b_i:
             continue
-        springs.append((a_i, b_i, spacing * 0.9, 5.0))
+        springs.append((a_i, b_i, spacing * 0.9, 12.0))
         link_pairs.add((min(a_i, b_i), max(a_i, b_i)))
+        bonded.add((min(a_i, b_i), max(a_i, b_i)))
 
     n_pts = len(pts)
-    k = spacing * 1.6
+    k = spacing * 1.15
     iters = int(min(600, max(120, 26000 / max(n_pts, 1))))
     log.info(f"graph layout: {len(names)} contigs as {n_pts} points, {iters} iterations")
     temp = spacing * 2.0
@@ -169,7 +177,7 @@ def bandage_layout(
         for i in range(n_pts):
             xi, yi = pts[i]
             for j in range(i + 1, n_pts):
-                if (i, j) in link_pairs:
+                if (i, j) in bonded:
                     continue
                 dx = xi - pts[j][0]
                 dy = yi - pts[j][1]
@@ -208,6 +216,37 @@ def bandage_layout(
             pts[i][0] += dx / d * lim
             pts[i][1] += dy / d * lim
         temp = max(temp * 0.985, 0.4)
+
+    # ---- enforce the drawn lengths ----
+    # A force model cannot guarantee a length: a bead pair sitting at its rest
+    # length still gets pushed by every other bead, so chains stretch, and a
+    # contig's drawn length stops meaning anything. This is a constraint
+    # projection pass - walk each chain and move consecutive beads back to
+    # exactly their rest separation, repeatedly. It converges in a few dozen
+    # passes and barely disturbs the shape the force model found, but it makes
+    # the drawn length exact, which is the whole point of drawing it to scale.
+    chain_rest = {
+        n: (segment_draw_length(by_name[n].length, args) / max(len(chain[n]) - 1, 1))
+        for n in names
+    }
+    for _pass in range(80):
+        worst = 0.0
+        for n in names:
+            idxs = chain[n]
+            rest = chain_rest[n]
+            for b in range(len(idxs) - 1):
+                i, j = idxs[b], idxs[b + 1]
+                dx = pts[j][0] - pts[i][0]
+                dy = pts[j][1] - pts[i][1]
+                d = math.hypot(dx, dy) or 1e-6
+                corr = (d - rest) / d * 0.5
+                worst = max(worst, abs(d - rest))
+                pts[i][0] += dx * corr
+                pts[i][1] += dy * corr
+                pts[j][0] -= dx * corr
+                pts[j][1] -= dy * corr
+        if worst < 0.05:
+            break
 
     poly = {n: [(pts[i][0], pts[i][1]) for i in chain[n]] for n in names}
 

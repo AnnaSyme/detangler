@@ -12,12 +12,16 @@ needed — the chromosome count is inferred from the structure of the graph.
 
 ## What it looks like
 
-The paired figure, shown here on a real Flye assembly of *Fusarium
-graminearum* — 11 graph segments resolving into 4 chromosomes plus a
-mitochondrion (design mockup; the drawing code is being updated to match):
+Real output, on a Flye assembly of *Fusarium graminearum* (ONT, ~22x). Eleven
+graph segments on the left; on the right, the molecules they resolve into, each
+with the repeats the graph attaches to its ends. A segment keeps the same colour
+and the same drawn size in both panels.
 
 ![Paired figure: assembly graph resolved into a chromosome
-hypothesis](detangler_figure-mockup_v1.svg)
+hypothesis](detangler_figure_v1.svg)
+
+A demo on a modest assembly, not a benchmark. What the tool infers depends on
+how well the graph is resolved in the first place.
 
 ## How to run
 

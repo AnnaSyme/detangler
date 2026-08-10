@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
@@ -93,6 +94,62 @@ def segment_thickness(depth: Optional[float] = None) -> float:
     return float(BAR_W)
 
 
+def _graphviz_positions(
+    pts: List[List[float]],
+    springs: List[Tuple[int, int, float, float]],
+    spacing: float,
+    log: Log,
+) -> bool:
+    """
+    Ask neato for an initial layout, in place. Returns False if graphviz is not
+    installed, in which case the caller falls back to its own model.
+
+    Two things neato gives that a plain spring model does not: a desired length
+    per edge, honoured properly, and `overlap=prism`, which removes node overlap
+    as a separate optimisation rather than hoping repulsion sorts it out.
+    """
+    seen: Dict[Tuple[int, int], float] = {}
+    for a, b, rest, _st in springs:
+        key = (min(a, b), max(a, b))
+        if key not in seen or rest < seen[key]:
+            seen[key] = rest
+    if not seen:
+        return False
+
+    scale = 72.0  # graphviz works in inches; len is in inches, output in points
+    lines = ["graph g {", "  node [shape=point, width=0.01, label=\"\"];"]
+    for (a, b), rest in sorted(seen.items()):
+        lines.append(f"  n{a} -- n{b} [len={rest / scale:.4f}];")
+    lines.append("}")
+    dot = "\n".join(lines)
+
+    try:
+        proc = subprocess.run(
+            ["neato", "-Tplain", "-Goverlap=prism", "-Gsep=+6", "-Gmodel=subset"],
+            input=dot, capture_output=True, text=True, timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return False
+
+    got = 0
+    for line in proc.stdout.splitlines():
+        f = line.split()
+        if len(f) >= 4 and f[0] == "node" and f[1].startswith("n"):
+            try:
+                i = int(f[1][1:])
+                pts[i][0] = float(f[2]) * scale
+                pts[i][1] = float(f[3]) * scale
+            except (ValueError, IndexError):
+                continue
+            got += 1
+    if got < len(pts) * 0.9:
+        return False
+    log.info(f"graph layout: initial placement from graphviz neato ({got} points)")
+    return True
+
+
 def bandage_layout(
     calls: List[SegmentCall], links: List[GfaLink], args, log: Log
 ) -> Tuple[Dict[str, List[Tuple[float, float]]], float, float]:
@@ -155,6 +212,7 @@ def bandage_layout(
         (min(a, b), max(a, b)) for a, b, _rest, _st in springs
     }
     link_pairs: Set[Tuple[int, int]] = set()
+    loose_links: Set[Tuple[int, int]] = set()
     for l in links:
         if l.a == l.b or l.a not in chain or l.b not in chain:
             continue
@@ -162,13 +220,34 @@ def bandage_layout(
         b_i = terminal(l.b, "s" if l.b_orient == "+" else "e")
         if a_i == b_i:
             continue
-        springs.append((a_i, b_i, spacing * 0.9, 12.0))
+        # A contig with BOTH ends on the same neighbour is a loop. Held at the
+        # normal junction length it folds into a hairpin lying on top of itself;
+        # it needs room to come back round.
+        loop = sum(
+            1 for o in links
+            if o.a != o.b and {o.a, o.b} == {l.a, l.b}
+        ) > 1
+        rest_here = spacing * (3.2 if loop else 0.9)
+        springs.append((a_i, b_i, rest_here, 6.0 if loop else 12.0))
         link_pairs.add((min(a_i, b_i), max(a_i, b_i)))
         bonded.add((min(a_i, b_i), max(a_i, b_i)))
+        if loop:
+            loose_links.add((min(a_i, b_i), max(a_i, b_i)))
+
+    # ---- initial placement, by graphviz when it is available ----
+    # neato is a mature implementation of exactly this problem: it honours a
+    # desired length per edge (`len`), and `overlap=prism` removes node overlap
+    # properly afterwards. Bandage leans on OGDF's FMMM for the same reason. The
+    # hand-rolled model below still runs, but starting from a good global layout
+    # is worth far more than any amount of tuning it.
+    if _graphviz_positions(pts, springs, spacing, log):
+        iters_scale = 0.25
+    else:
+        iters_scale = 1.0
 
     n_pts = len(pts)
     k = spacing * 1.15
-    iters = int(min(600, max(120, 26000 / max(n_pts, 1))))
+    iters = int(min(600, max(120, 26000 / max(n_pts, 1))) * iters_scale)
     log.info(f"graph layout: {len(names)} contigs as {n_pts} points, {iters} iterations")
     temp = spacing * 2.0
 
@@ -229,7 +308,13 @@ def bandage_layout(
         n: (segment_draw_length(by_name[n].length, args) / max(len(chain[n]) - 1, 1))
         for n in names
     }
-    for _pass in range(80):
+    link_rest = spacing * 0.9
+    w_sep = segment_thickness() * 1.12
+    owner = {}
+    for n in names:
+        for i in chain[n]:
+            owner[i] = n
+    for _pass in range(120):
         worst = 0.0
         for n in names:
             idxs = chain[n]
@@ -245,8 +330,109 @@ def bandage_layout(
                 pts[i][1] += dy * corr
                 pts[j][0] -= dx * corr
                 pts[j][1] -= dy * corr
+        # Only RUNAWAY junctions are reined in. A junction stretched right across
+        # the drawing has to pass under whatever lies between its two ends, which
+        # is how a connector ended up running beneath contig 2. Pulling every
+        # junction shut instead collapses the whole graph onto its hubs and the
+        # labels pile up, so this fires well above the resting length and stops
+        # at a comfortable one.
+        # Contigs must not lie on top of one another. Repulsion during the force
+        # phase discourages it but cannot forbid it, and the length constraints
+        # above can push two ribbons back into each other. This is a hard
+        # separation: any two beads on DIFFERENT contigs closer than a ribbon
+        # width get pushed apart, so no two ribbons can overlap.
+        clear = w_sep
+        for i in range(n_pts):
+            for j in range(i + 1, n_pts):
+                if (i, j) in bonded or owner[i] == owner[j]:
+                    continue
+                dx = pts[j][0] - pts[i][0]
+                dy = pts[j][1] - pts[i][1]
+                d2 = dx * dx + dy * dy
+                if d2 >= clear * clear:
+                    continue
+                d = math.sqrt(d2) or 1e-6
+                corr = (d - clear) / d * 0.5
+                worst = max(worst, clear - d)
+                pts[i][0] += dx * corr
+                pts[i][1] += dy * corr
+                pts[j][0] -= dx * corr
+                pts[j][1] -= dy * corr
+
+        far = link_rest * 2.6
+        target = link_rest * 2.0
+        for i, j in link_pairs:
+            if (i, j) in loose_links:
+                continue
+            dx = pts[j][0] - pts[i][0]
+            dy = pts[j][1] - pts[i][1]
+            d = math.hypot(dx, dy) or 1e-6
+            if d <= far:
+                continue
+            corr = (d - target) / d * 0.25
+            worst = max(worst, d - target)
+            pts[i][0] += dx * corr
+            pts[i][1] += dy * corr
+            pts[j][0] -= dx * corr
+            pts[j][1] -= dy * corr
         if worst < 0.05:
             break
+
+    # ---- smooth the chains ----
+    # The constraint passes fix distances but not directions, so a chain settles
+    # with a small kink at every bead and the contig looks wobbly rather than
+    # drawn. Each interior bead is pulled hard towards the midpoint of its
+    # neighbours and the spacing is then restored; the two ends are held, so
+    # junctions do not move.
+    # A contig laid out between two fixed ends settles as a straight run, which
+    # is accurate but reads as a wire diagram. Each chain is bowed to one side
+    # first - alternating, so neighbouring contigs curve away from each other -
+    # and the smoothing below then turns that into a clean arc rather than a
+    # kinked one.
+    for si, n in enumerate(sorted(names)):
+        idxs = chain[n]
+        if len(idxs) < 3:
+            continue
+        ax_, ay_ = pts[idxs[0]]
+        bx_, by_ = pts[idxs[-1]]
+        vx_, vy_ = bx_ - ax_, by_ - ay_
+        vlen_ = math.hypot(vx_, vy_) or 1.0
+        nx_, ny_ = -vy_ / vlen_, vx_ / vlen_
+        amp = vlen_ * 0.22 * (1 if si % 2 else -1)
+        for b in range(1, len(idxs) - 1):
+            t = b / (len(idxs) - 1)
+            k_ = math.sin(math.pi * t)
+            pts[idxs[b]][0] += nx_ * amp * k_
+            pts[idxs[b]][1] += ny_ * amp * k_
+
+    for _round in range(60):
+        for n in names:
+            idxs = chain[n]
+            if len(idxs) < 3:
+                continue
+            new_xy = []
+            for b in range(1, len(idxs) - 1):
+                i, prv, nxt = idxs[b], idxs[b - 1], idxs[b + 1]
+                mx_ = (pts[prv][0] + pts[nxt][0]) / 2.0
+                my_ = (pts[prv][1] + pts[nxt][1]) / 2.0
+                new_xy.append((i, pts[i][0] * 0.25 + mx_ * 0.75,
+                                  pts[i][1] * 0.25 + my_ * 0.75))
+            for i, nx_, ny_ in new_xy:
+                pts[i][0], pts[i][1] = nx_, ny_
+        for n in names:
+            idxs = chain[n]
+            rest = chain_rest[n]
+            for _sub in range(3):
+                for b in range(len(idxs) - 1):
+                    i, j = idxs[b], idxs[b + 1]
+                    dx = pts[j][0] - pts[i][0]
+                    dy = pts[j][1] - pts[i][1]
+                    d = math.hypot(dx, dy) or 1e-6
+                    corr = (d - rest) / d * 0.5
+                    pts[i][0] += dx * corr
+                    pts[i][1] += dy * corr
+                    pts[j][0] -= dx * corr
+                    pts[j][1] -= dy * corr
 
     poly = {n: [(pts[i][0], pts[i][1]) for i in chain[n]] for n in names}
 
@@ -274,17 +460,42 @@ def bandage_layout(
         return min(xs), min(ys), max(xs), max(ys)
 
     groups = sorted(comps.values(), key=lambda g: -sum(by_name[n].length for n in g))
-    gap = segment_thickness() * 3.0
-    _mx0, _my0, mx1, my1 = bbox(groups[0])
-    cur_x, row_y = bbox(groups[0])[0], my1 + gap
+    gap = segment_thickness() * 1.5
+    mx0, my0, mx1, my1 = bbox(groups[0])
+    # Stacked BESIDE the main component, not beneath it. The figure as a whole is
+    # graph above chromosomes, so height is the scarce dimension - a row of
+    # isolated contigs underneath made the whole thing too tall to view at once,
+    # while there was empty space to the side.
+    col_x = mx1 + gap
+    cur_y = my0
     for g in groups[1:]:
-        gx0, gy0, gx1, _gy1 = bbox(g)
-        dx, dy = cur_x - gx0, row_y - gy0
+        gx0, gy0, _gx1, gy1 = bbox(g)
+        dx, dy = col_x - gx0, cur_y - gy0
         for n in g:
             poly[n] = [(x + dx, y + dy) for x, y in poly[n]]
-        cur_x += (gx1 - gx0) + gap
+        cur_y += (gy1 - gy0) + gap
 
-    # landscape, so the figure is not forced tall by an arbitrary rotation
+    # Rotate so the layout's LONG axis lies horizontal. A spring layout comes out
+    # at an arbitrary angle, and the figure stacks the graph above the
+    # chromosomes, so height is the scarce dimension. A quarter turn only helps
+    # when the spread happens to be axis-aligned; the principal axis is the
+    # general answer.
+    allp = [p for n in names for p in poly[n]]
+    if len(allp) > 2:
+        cx0 = sum(p[0] for p in allp) / len(allp)
+        cy0 = sum(p[1] for p in allp) / len(allp)
+        sxx = sum((p[0] - cx0) ** 2 for p in allp)
+        syy = sum((p[1] - cy0) ** 2 for p in allp)
+        sxy = sum((p[0] - cx0) * (p[1] - cy0) for p in allp)
+        theta = 0.5 * math.atan2(2 * sxy, sxx - syy)
+        ct, st = math.cos(-theta), math.sin(-theta)
+        poly = {
+            n: [
+                ((x - cx0) * ct - (y - cy0) * st, (x - cx0) * st + (y - cy0) * ct)
+                for x, y in v
+            ]
+            for n, v in poly.items()
+        }
     xs = [p[0] for n in names for p in poly[n]]
     ys = [p[1] for n in names for p in poly[n]]
     if (max(ys) - min(ys)) > (max(xs) - min(xs)):
@@ -378,7 +589,7 @@ def render_bandage_style_svg(
     """The graph drawn Bandage-fashion: thick flexible contigs, force-directed."""
     by_name = {c.name: c for c in calls}
     geom, width, height = bandage_layout(calls, links, args, log)
-    colours = colours or assign_segment_colours(calls)
+    colours = colours or assign_segment_colours(calls, links)
 
     P = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
@@ -394,7 +605,75 @@ def render_bandage_style_svg(
     circular = {l.a for l in links if l.a == l.b}
     w = segment_thickness()
 
+    def poly_len(pointset: List[Tuple[float, float]]) -> float:
+        return sum(
+            math.hypot(pointset[i + 1][0] - pointset[i][0],
+                       pointset[i + 1][1] - pointset[i][1])
+            for i in range(len(pointset) - 1)
+        )
+
+    def raw_end(seg: str, end: str) -> Tuple[float, float]:
+        return geom[seg][0] if end == "s" else geom[seg][-1]
+
+    # Which physical ends of each contig actually carry links, and what they
+    # attach to. A contig with links on ONE end only is a tip - the neighbours
+    # meet at that end, they do not pass through - and the drawing has to say so.
+    ends_used: Dict[str, Set[str]] = defaultdict(set)
+    partners: Dict[Tuple[str, str], List[Tuple[float, float]]] = defaultdict(list)
+    for l in links:
+        if l.a == l.b or l.a not in geom or l.b not in geom:
+            continue
+        ae = "e" if l.a_orient == "+" else "s"
+        be = "s" if l.b_orient == "+" else "e"
+        ends_used[l.a].add(ae)
+        ends_used[l.b].add(be)
+        partners[(l.a, ae)].append(raw_end(l.b, be))
+        partners[(l.b, be)].append(raw_end(l.a, ae))
+
+    # A contig shorter than one ribbon width can only be drawn as a dot, since a
+    # round-capped stroke is never shorter than its own width. Where it is a tip,
+    # the dot is pushed off the junction along the direction away from its
+    # neighbours, so it reads as hanging OFF the join rather than sitting in the
+    # middle of it. Centring it on the junction would draw the neighbours as
+    # passing through - the very join this graph does not support.
+    dot_centre: Dict[str, Tuple[float, float]] = {}
+    for name, pointset in geom.items():
+        if name in circular or len(pointset) < 2:
+            continue
+        # a shade above one width: the constraint pass lands chains within a
+        # small tolerance of their target, so an exact comparison misses the
+        # very segments this is for
+        if poly_len(pointset) > w * 1.15:
+            continue
+        used = ends_used.get(name, set())
+        mid = (
+            (pointset[0][0] + pointset[-1][0]) / 2.0,
+            (pointset[0][1] + pointset[-1][1]) / 2.0,
+        )
+        if len(used) == 1:
+            live = next(iter(used))
+            jx, jy = raw_end(name, live)
+            near = partners.get((name, live), [])
+            if near:
+                cx = sum(p[0] for p in near) / len(near)
+                cy = sum(p[1] for p in near) / len(near)
+                dx, dy = jx - cx, jy - cy
+                d = math.hypot(dx, dy) or 1.0
+                dot_centre[name] = (jx + dx / d * w / 2.0, jy + dy / d * w / 2.0)
+                continue
+        dot_centre[name] = mid
+
+    allpts = [p for v in geom.values() for p in v]
+    gcx = sum(p[0] for p in allpts) / max(len(allpts), 1)
+    gcy = sum(p[1] for p in allpts) / max(len(allpts), 1)
+
     def terminal(seg: str, end: str) -> Tuple[float, float]:
+        # a tip is joined AT its live end, on the rim of the dot; a short contig
+        # that really is a bridge keeps its centre so both sides meet in it
+        if seg in dot_centre and len(ends_used.get(seg, set())) == 1:
+            return raw_end(seg, end)
+        if seg in dot_centre:
+            return dot_centre[seg]
         return geom[seg][0] if end == "s" else geom[seg][-1]
 
     # junction connectors, behind the contigs
@@ -407,8 +686,19 @@ def render_bandage_style_svg(
             continue
         ax, ay = terminal(l.a, "e" if l.a_orient == "+" else "s")
         bx, by = terminal(l.b, "s" if l.b_orient == "+" else "e")
+        # Bowed, not straight. A junction drawn as a straight line reads as a
+        # ruled edge in a diagram; the contigs around it are all curves, and the
+        # straight lines were the thing making the panel look mechanical. The bow
+        # goes away from the centre of the drawing so connectors at a hub splay
+        # rather than fold over one another.
+        mxx, myy = (ax + bx) / 2.0, (ay + by) / 2.0
+        vx, vy = mxx - gcx, myy - gcy
+        vlen = math.hypot(vx, vy) or 1.0
+        chord = math.hypot(bx - ax, by - ay)
+        bow = min(chord * 0.55, w * 2.4)
+        qx, qy = mxx + vx / vlen * bow, myy + vy / vlen * bow
         P.append(
-            f'<line x1="{ax:.1f}" y1="{ay:.1f}" x2="{bx:.1f}" y2="{by:.1f}" '
+            f'<path d="M {ax:.1f} {ay:.1f} Q {qx:.1f} {qy:.1f} {bx:.1f} {by:.1f}" '
             f'stroke-width="{w * 0.26:.1f}"/>'
         )
     P.append("</g>")
@@ -421,25 +711,40 @@ def render_bandage_style_svg(
         colour = colours.get(name, "#cfcfcf")
         pointset = geom[name]
         if name in circular:
+            # the ring must have a visible hole, or it renders as a solid blob
+            # and stops being distinguishable from a short linear contig
             seg_len = max(segment_draw_length(c.length, args), 30.0)
-            r = max(seg_len / (2 * math.pi), 13.0)
+            ring_w = w * 0.55
+            r = max(seg_len / (2 * math.pi), w * 0.85)
             cx = sum(p[0] for p in pointset) / len(pointset)
             cy = sum(p[1] for p in pointset) / len(pointset)
             rings[name] = (cx, cy, r)
             P.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" '
-                     f'stroke="{PALETTE["bar_edge"]}" stroke-width="{w + 2.0:.1f}"/>')
-            P.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" '
-                     f'stroke="{colour}" stroke-width="{w:.1f}"/>')
+                     f'stroke="{colour}" stroke-width="{ring_w:.1f}"/>')
+            continue
+        if name in dot_centre:
+            # Drawn as a short BAR with square ends, not a disc. A disc reads as
+            # a circular contig - which is a real and different thing in a graph
+            # (edge_11, a mitochondrion) - so a linear contig too short to draw
+            # at scale must not borrow that shape.
+            cx, cy = dot_centre[name]
+            ex, ey = pointset[-1][0] - pointset[0][0], pointset[-1][1] - pointset[0][1]
+            elen = math.hypot(ex, ey) or 1.0
+            ux, uy = ex / elen, ey / elen
+            half = max(poly_len(pointset), w) / 2.0
+            d = (f"M {cx - ux * half:.1f} {cy - uy * half:.1f} "
+                 f"L {cx + ux * half:.1f} {cy + uy * half:.1f}")
+            P.append(f'<path d="{d}" stroke="{colour}" stroke-width="{w:.1f}" '
+                     f'stroke-linecap="butt"/>')
             continue
         d = _smooth_path(_trim_polyline(pointset, w / 2.0))
-        P.append(f'<path d="{d}" stroke="{PALETTE["bar_edge"]}" stroke-width="{w + 2.0:.1f}" '
-                 f'stroke-linecap="round" stroke-linejoin="round"/>')
         P.append(f'<path d="{d}" stroke="{colour}" stroke-width="{w:.1f}" '
                  f'stroke-linecap="round" stroke-linejoin="round"/>')
     P.append("</g>")
 
     # labels: the contig number inside the ribbon, coverage beside it
     label_all = len(calls) <= args.graph_label_limit
+    placed_labels: List[Tuple[float, float]] = []
     P.append(f'<g id="layer-labels" fill="{PALETTE["text"]}">')
     for name in sorted(geom):
         c = by_name[name]
@@ -453,7 +758,7 @@ def render_bandage_style_svg(
             nx, ny = 0.0, -1.0
         else:
             mid = len(pointset) // 2
-            mx, my = pointset[mid]
+            mx, my = dot_centre.get(name, pointset[mid])
             a = pointset[max(mid - 1, 0)]
             b = pointset[min(mid + 1, len(pointset) - 1)]
             tx, ty = b[0] - a[0], b[1] - a[1]
@@ -464,16 +769,35 @@ def render_bandage_style_svg(
             f'font-size="{FS_LABEL}" font-weight="700" fill="{_text_on(colour)}">'
             f'{esc(_segment_number(name))}</text>'
         )
-        span = sum(
-            math.hypot(pointset[i + 1][0] - pointset[i][0], pointset[i + 1][1] - pointset[i][1])
-            for i in range(len(pointset) - 1)
-        )
-        if c.depth is not None and (name in rings or span >= w * 2.2):
-            off = w / 2 + FS_SUB + 8
-            lx, ly = mx + nx * off, my + ny * off
+        # Coverage is shown for EVERY contig. It used to be suppressed on short
+        # ones for want of room, which quietly hid it on exactly the segments
+        # where depth decides the call - a repeat, a tip, an organelle.
+        if c.depth is not None:
+            # Coverage labels crowd badly around a hub, where several short
+            # contigs meet. Each label tries a ring of candidate positions and
+            # takes the one furthest from the labels already placed.
+            off = w / 2 + FS_SUB + 12
+            best_pt, best_score = None, -1.0
+            for k in range(12):
+                ang = 2 * math.pi * k / 12
+                ox_, oy_ = math.cos(ang), math.sin(ang)
+                # bias towards the ribbon's normal, so a label still reads as
+                # belonging to its own contig
+                bias = 1.0 + 0.6 * (ox_ * nx + oy_ * ny)
+                cxp, cyp = mx + ox_ * off, my + oy_ * off
+                near = min(
+                    (math.hypot(cxp - px, cyp - py) for px, py in placed_labels),
+                    default=1e6,
+                )
+                score = min(near, 400.0) * bias
+                if score > best_score:
+                    best_pt, best_score = (cxp, cyp), score
+            lx, ly = best_pt  # type: ignore
+            placed_labels.append((lx, ly))
             P.append(
                 f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
-                f'font-size="{FS_SUB}" fill="{PALETTE["muted"]}">{c.depth:.0f}x</text>'
+                f'font-size="{FS_SUB + 5}" font-weight="600" '
+                f'fill="{PALETTE["text"]}">{c.depth:.0f}x</text>'
             )
     P.append("</g>")
 
@@ -552,7 +876,7 @@ def render_graph_svg(
     """
     by_name = {c.name: c for c in calls}
     adj = build_adjacency(links)
-    colours = colours or assign_segment_colours(calls)
+    colours = colours or assign_segment_colours(calls, links)
     pos, width, height, y_cursor = _graph_layout(calls, adj)
     P = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '

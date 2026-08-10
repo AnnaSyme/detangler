@@ -183,7 +183,7 @@ def build_model(args, log: Log) -> Tuple[Model, Dict[str, str]]:
         model.baseline_basis = (
             f"median depth of segments at least {human_bp(args.baseline_min_length)} long"
         )
-        colours = assign_segment_colours(calls)
+        colours = assign_segment_colours(calls, links)
         model.segment_colours = colours
 
         # the same colour a segment has in the graph figure, drawn where it lands
@@ -320,7 +320,7 @@ def build_model_graph_first(args, log: Log) -> Tuple[Model, Dict[str, str]]:
     if args.flye_info:
         model.inputs["flye_info"] = args.flye_info
 
-    colours = model.segment_colours or assign_segment_colours(calls)
+    colours = model.segment_colours or assign_segment_colours(calls, links)
     model.segment_colours = colours
     extra.update(
         identify_repeats(model, calls, model.tangles, adj, seq_by_segment, base, args, log)
@@ -341,7 +341,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "Typical run:\n"
             "  detangler.py --fai assembly.fa.fai --gfa assembly.gfa --paf segs.paf \\\n"
             "                --coverage cov.regions.bed.gz --out-dir out --prefix assembly\n\n"
-            "Then edit out/asm_karyotype.yaml and re-run with --config to lock in your calls."
+            "Then edit out/assembly_karyotype.yaml and re-run with --config to lock in your calls."
         ),
     )
     g = p.add_argument_group("sequence input (one required)")
@@ -457,6 +457,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--tie-threshold", type=float, default=0.75,
                    help="hypotheses within this score of the best are reported as tied "
                         "(default 0.75)")
+    g.add_argument("--placement-tolerance", type=float, default=0.5,
+                   help="how far a segment's depth-derived copy number may fall short "
+                        "of the number of places it is drawn before that is reported as a "
+                        "contradiction (default 0.5)")
     g.add_argument("--speculative-penalty", type=float, default=1.5,
                    help="score penalty per join that is not supported by a traversable "
                         "path, i.e. where two segments merely end in the same one-sided "
@@ -573,7 +577,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     os.makedirs(args.out_dir, exist_ok=True)
     base = os.path.join(args.out_dir, args.prefix)
-    model.warnings = list(log.warnings)
+    # keep the model's own warnings - the copy-number-versus-placement checks are
+    # raised while the model is built, and assigning here used to wipe them
+    model.warnings = list(log.warnings) + [
+        w for w in model.warnings if w not in log.warnings
+    ]
 
     svg_path = base + "_ideogram.svg"
     with open(svg_path, "w") as fh:

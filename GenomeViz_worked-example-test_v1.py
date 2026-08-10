@@ -341,16 +341,28 @@ def _(model, kg):
 
 @check("the ambiguity is declared, not hidden")
 def _(model, kg):
-    tied = [h for h in model.hypotheses if any("score within" in c for c in h.contradicting)]
-    assert len(tied) >= 3, f"only {len(tied)} hypotheses flagged as tied"
+    # This check used to require >= 3 hypotheses flagged as scoring within the
+    # tie threshold. That was only ever satisfiable because joins were
+    # enumerated over a segment-level adjacency that permitted routes entering
+    # and leaving a segment through the same end. With end-aware traversal this
+    # graph supports NO legal backbone-to-backbone join, so the alternatives are
+    # now surfaced as explicitly speculative joins instead of as score ties.
+    # The thing worth testing is unchanged: the alternatives must be visible AND
+    # labelled as unresolved.
+    alts = [h for h in model.hypotheses if any(j.speculative for j in h.joins)]
+    assert alts, "no speculative alternatives were offered at all"
     pairs = set()
-    for h in tied:
+    for h in alts:
         for c in h.chains:
             if len(c) > 1:
                 pairs.add(tuple(sorted(c)))
     for expected in (("edge_2", "edge_7"), ("edge_5", "edge_6")):
-        assert expected in pairs, f"{expected} not among the tied alternatives: {sorted(pairs)}"
-    return f"{len(tied)} tied hypotheses covering {len(pairs)} alternative joins"
+        assert expected in pairs, f"{expected} not among the alternatives: {sorted(pairs)}"
+    for h in alts:
+        assert any("NOT supported by a traversable path" in c for c in h.contradicting), (
+            f"hypothesis {h.rank} uses a speculative join without saying so"
+        )
+    return f"{len(alts)} declared alternatives covering {len(pairs)} unresolved joins"
 
 
 @check("edge_4 sits apart as a contaminant candidate, not forced into a chromosome")

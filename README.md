@@ -1,6 +1,6 @@
 # detangler
 
-Turn an assembler's output into a hypothesis of chromosome structure.
+Turn a genome assembly graph into a chromosome hypothesis.
 
 detangler reads a genome assembly graph (GFA), classifies every segment from
 graph-intrinsic evidence (length, depth-derived copy number, links,
@@ -25,14 +25,14 @@ The simplest run needs only the assembly graph (if the GFA carries
 sequence, nothing else is required):
 
 ```
-python detangler.py --gfa assembly_graph.gfa --out-dir results --prefix myasm
+python detangler.py --gfa assembly_graph.gfa --out-dir results --prefix myassembly
 ```
 
 With more evidence (index, segment mapping, read coverage):
 
 ```
-python detangler.py --fai asm.fa.fai --gfa asm.gfa --paf segs_to_asm.paf \
-    --coverage cov.regions.bed.gz --out-dir results --prefix myasm
+python detangler.py --fai assembly.fa.fai --gfa assembly.gfa --paf segs_to_assembly.paf \
+    --coverage cov.regions.bed.gz --out-dir results --prefix myassembly
 ```
 
 No data handy? Generate synthetic demo data and run on it:
@@ -42,10 +42,10 @@ python detangler.py --demo demo_data --out-dir results --prefix demo
 ```
 
 To override any of the tool's calls, edit the emitted
-`results/myasm_karyotype.yaml` and re-run from it:
+`results/myassembly_karyotype.yaml` and re-run from it:
 
 ```
-python detangler.py --config results/myasm_karyotype.yaml --out-dir results --prefix myasm
+python detangler.py --config results/myassembly_karyotype.yaml --out-dir results --prefix myassembly
 ```
 
 ## Required inputs
@@ -82,8 +82,8 @@ Run `--help` for the full list, including all classification thresholds.
 Written to `--out-dir` with `--prefix`:
 
 - `<prefix>_report.md` — the evidence and ranked hypotheses, in plain language
-- `<prefix>_paired.svg` / `.png` — assembly graph beside the chromosome
-  hypothesis, shared colours
+- `<prefix>_paired.svg` — assembly graph beside the chromosome hypothesis,
+  shared colours
 - `<prefix>_graph.svg` — the graph panel alone
 - `<prefix>_ideogram.svg` / `.html` — the chromosome ideogram (HTML is
   interactive)
@@ -91,3 +91,18 @@ Written to `--out-dir` with `--prefix`:
 - `<prefix>_bandage_colours.csv` — colour map to load into Bandage
 - `<prefix>_blast_commands.sh` and `<prefix>_repeat_candidates.fasta` —
   ready-to-run identification commands for the segments worth BLASTing
+
+## Credits
+
+The assembly graph panel follows the approach used by
+[Bandage](https://github.com/rrwick/Bandage) (Wick et al. 2015): each contig is
+laid out as a chain of many small nodes rather than as a single rigid edge, so
+that a contig's drawn length tracks its sequence length and long contigs can
+curve around their neighbours. That idea is reimplemented here in Python — no
+Bandage code is used, and detangler is not derived from it.
+
+Co-built with [Claude](https://claude.ai).
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

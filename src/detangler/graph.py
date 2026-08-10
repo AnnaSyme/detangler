@@ -54,17 +54,16 @@ def _link_end(orient: str, is_source: bool) -> str:
 
 def build_end_adjacency(links: List[GfaLink]) -> Dict[Tuple[str, str], Set[str]]:
     """
-    Like build_adjacency, but keyed by (segment, end) with end 's' (forward
-    start) or 'e' (forward end), so the two ends of a segment can be assessed
-    independently.
+    (segment, end) -> the NAMES of the segments attached at that end.
+
+    A view over build_end_links for callers that only need to know which
+    segments touch an end, not which of their ends does the touching. Derived
+    rather than computed separately so the orientation rule lives in one place.
     """
-    adj: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
-    for l in links:
-        if l.a == l.b:
-            continue
-        adj[(l.a, _link_end(l.a_orient, True))].add(l.b)
-        adj[(l.b, _link_end(l.b_orient, False))].add(l.a)
-    return adj
+    return {
+        key: {name for name, _end in partners}
+        for key, partners in build_end_links(links).items()
+    }
 
 
 OTHER_END = {"s": "e", "e": "s"}

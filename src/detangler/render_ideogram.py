@@ -38,6 +38,7 @@ from .model import (
     _confidence,
 )
 from .render_common import (
+    drawn_length_px,
     BAR_W,
     COV_W,
     FS_HEADING,
@@ -314,18 +315,20 @@ def render_svg(model: Model, interactive: bool = False) -> str:
         # Flush against the bar, not floating beside it, so a molecule reads as
         # one object: cap, backbone, cap. Only the OUTER corner of the outermost
         # cap is rounded; every join between blocks is square so they abut.
-        cap_h = BAR_W * 0.62
         for side, entries in sorted(s.caps.items()):
             n_side = len(entries)
-            for ci, (seg, colour) in enumerate(entries):
+            stacked = 0.0
+            for ci, (seg, colour, seg_len) in enumerate(entries):
+                cap_h = drawn_length_px(seg_len, lay.scale)
                 if side == "top":
-                    cy = top - cap_h * (ci + 1)
+                    cy = top - stacked - cap_h
                     rt = rx if ci == n_side - 1 else 0.0
                     rb = 0.0
                 else:
-                    cy = top + h + cap_h * ci
+                    cy = top + h + stacked
                     rt = 0.0
                     rb = rx if ci == n_side - 1 else 0.0
+                stacked += cap_h
                 add(
                     f'<path d="{_bar_path(x, cy, BAR_W, cap_h, rt, rb)}" fill="{colour}" '
                     f'fill-opacity="0.95" stroke="{PALETTE["bar_edge"]}" stroke-width="1.1"/>'
@@ -340,7 +343,7 @@ def render_svg(model: Model, interactive: bool = False) -> str:
         # shown by the numbered blocks in the bar, not by a caption above it.
         n_top = len(s.caps.get("top", []))
         add(
-            f'<text x="{x + BAR_W / 2:.1f}" y="{top + h + 20 + cap_h * len(s.caps.get("bottom", [])):.1f}" '
+            f'<text x="{x + BAR_W / 2:.1f}" y="{top + h + 20 + sum(drawn_length_px(L, lay.scale) for _n, _c, L in s.caps.get("bottom", [])):.1f}" '
             f'font-size="{FS_SUB}" text-anchor="middle" fill="{PALETTE["muted"]}">'
             f'{human_bp(s.length)}</text>'
         )
@@ -484,66 +487,6 @@ def _legend_svg(model: Model, lay: Layout) -> Tuple[str, float]:
     return "", lay.header_h + MAX_BAR_H + 40
 
 
-def _legend_svg_unused(model: Model, lay: Layout) -> Tuple[str, float]:
-    y0 = lay.header_h + MAX_BAR_H + 76
-    out = [f'<g id="legend" font-size="11" fill="{PALETTE["text"]}">']
-    x = MARGIN_L
-    if any(s.blocks for s in model.sequences):
-        out.append(
-            f'<text x="{x}" y="{y0 + 1}" fill="{PALETTE["muted"]}">'
-            f'Blocks within each bar are graph segments, coloured as in the assembly graph '
-            f'figure so they can be traced between the two.</text>'
-        )
-        y0 += 20
-    roles = [r for r in ("chromosome", "mitochondrion", "plastid") if any(s.role == r for s in model.sequences)]
-    for r in roles:
-        out.append(
-            f'<rect x="{x}" y="{y0 - 9}" width="13" height="13" rx="6" fill="{PALETTE[r]}" '
-            f'fill-opacity="0.82" stroke="{PALETTE["bar_edge"]}" stroke-width="0.8"/>'
-        )
-        out.append(f'<text x="{x + 19}" y="{y0 + 1}">{r}</text>')
-        x += 24 + 7.2 * len(r)
-
-    types = []
-    for t in model.tangles:
-        if t.type not in types:
-            types.append(t.type)
-    y = y0 + 24
-    x = MARGIN_L
-    for tt in types:
-        colour, dash = TANGLE_STYLE.get(tt, ("#888888", ""))
-        label = TANGLE_LABEL.get(tt, tt)
-        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        out.append(
-            f'<line x1="{x}" y1="{y - 4}" x2="{x + 26}" y2="{y - 4}" stroke="{colour}" '
-            f'stroke-width="2.6"{dash_attr}/>'
-        )
-        out.append(f'<text x="{x + 32}" y="{y}">{esc(label)}</text>')
-        x += 46 + 6.6 * len(label)
-        if x > lay.width - 260:
-            x = MARGIN_L
-            y += 20
-
-    notes: List[str] = []
-    if lay.not_to_scale:
-        notes.append(
-            "* drawn at a minimum height so it stays visible: hatched bars are not to scale."
-        )
-    up = model.unplaced()
-    if up:
-        total = max(sum(s.length for s in model.sequences), 1)
-        notes.append(
-            f"{len(up)} unplaced sequence(s) are not drawn, totalling "
-            f"{human_bp(sum(s.length for s in up))} "
-            f"({100.0 * sum(s.length for s in up) / total:.1f}% of the assembly); "
-            f"longest {human_bp(max(s.length for s in up))}."
-        )
-    for note in notes:
-        for line in wrap_text(note, lay.text_cols):
-            y += 18
-            out.append(f'<text x="{MARGIN_L}" y="{y}" fill="{PALETTE["muted"]}">{esc(line)}</text>')
-    out.append("</g>")
-    return "\n".join(out), y
 
 
 # ==========================================================================

@@ -43,3 +43,46 @@ genomes across fungi, plants and animals would.
   this", and treat that as a result rather than a failure.
 
 **Status:** not started. Raised 10 Aug 2026.
+
+## 2. Review the literature on untangling assembly graphs
+
+**The idea.** Read across the work on getting from an assembly graph to
+chromosomes, and see which ideas are worth borrowing. detangler's inference is
+currently hand-built: classify segments from depth and composition, enumerate
+legal joins, score them. That is a reasonable first pass, but it is not informed
+by what anyone else has tried.
+
+**Seed reference: arXiv:2206.00668** (Vrček, Bresson, Schmitz, Šikić). Trains a
+GatedGCN over an assembly graph to predict, per edge, whether it leads to an
+optimal reconstruction, then greedy-decodes those probabilities into paths and
+converts them to contigs. Trained on graphs from simulated chromosome 19 HiFi
+reads, evaluated on real CHM13 data, and compared against Raven's Layout
+heuristics on the *same* input graph — which is the right way to isolate the
+untangling method from the graph construction. Reported fewer contigs at
+comparable or better genome fraction and NG50/NGA50.
+
+**Read it for the framing, not the model.** Two things transfer directly even
+if we never train anything:
+
+- *Compare on the same input graph.* They deliberately hold the graph fixed and
+  vary only the untangling, so differences cannot be blamed on the assembler.
+  That is exactly the design the benchmarking programme above needs.
+- *Label what "correct" means.* They generate ground-truth edge labels by
+  simulating reads from a finished genome and keeping positional information.
+  An equivalent for detangler would give real training or evaluation data:
+  simulate from a finished assembly, build the graph, and you know which joins
+  are true.
+
+**The granularity differs and this matters.** Their nodes are READS and they
+work in the Layout phase of OLC, before contigs exist. detangler starts from an
+assembler's finished GFA, where nodes are already contigs. So their method is
+not a drop-in replacement — it is upstream of us. Worth being precise about that
+in any writing, because "untangling assembly graphs" describes both.
+
+**Others worth finding.** Not yet surveyed: the graph-native scaffolders
+(Rukki and similar), the organelle path-finders (oatk `pathfinder`), Tapestry,
+and whatever exists for karyotype inference from graph topology. See
+[[genomeviz-novelty-position]] in the assistant's notes for what the earlier
+adversarial sweeps already established, so this does not repeat them.
+
+**Status:** not started. Raised 10 Aug 2026.

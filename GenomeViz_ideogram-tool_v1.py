@@ -76,7 +76,7 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Sequence as Seq, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence as Seq, Set, Tuple
 
 try:  # optional, only affects config file format
     import yaml  # type: ignore
@@ -170,6 +170,10 @@ class SeqRecord:
     # True when the blocks tile the whole molecule (a chain built from segments),
     # False when they are placements dotted along an already-assembled sequence
     blocks_tile: bool = False
+    # {'top'|'bottom': [(segment, colour)]} - repeats the graph attaches to a FREE
+    # end of this molecule. They are not part of the chain and are not on the Mb
+    # scale, so they are drawn hanging off the end of the bar rather than in it.
+    caps: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
 
     @property
     def display(self) -> str:
@@ -981,6 +985,53 @@ def build_end_adjacency(links: List[GfaLink]) -> Dict[Tuple[str, str], Set[str]]
     return adj
 
 
+OTHER_END = {"s": "e", "e": "s"}
+
+
+def build_end_links(
+    links: List[GfaLink],
+) -> Dict[Tuple[str, str], Set[Tuple[str, str]]]:
+    """
+    The full bidirected adjacency: (segment, end) -> {(neighbour, neighbour_end)}.
+
+    build_end_adjacency keeps which of OUR ends a link touches but throws away
+    which of the NEIGHBOUR's ends it lands on, which makes it useless for
+    traversal: to walk through a segment you must know the end you arrived at so
+    you can leave by the opposite one. Losing that is what let the tool propose
+    routes that enter and leave a segment through the same end.
+    """
+    adj: Dict[Tuple[str, str], Set[Tuple[str, str]]] = defaultdict(set)
+    for l in links:
+        if l.a == l.b:
+            continue
+        ae = (l.a, _link_end(l.a_orient, True))
+        be = (l.b, _link_end(l.b_orient, False))
+        adj[ae].add(be)
+        adj[be].add(ae)
+    return adj
+
+
+def dead_end_repeats(
+    end_links: Dict[Tuple[str, str], Set[Tuple[str, str]]], segs: Iterable[str]
+) -> Dict[str, str]:
+    """
+    Segments with links on one end only. Such a segment CANNOT be traversed, so
+    it is not a bridge between two contigs: it is a tip. Biologically it is the
+    signature of a repeat whose far side the assembler never resolved - very
+    often a telomeric or subtelomeric array sitting at the ends of several
+    chromosomes at once.
+
+    Returns {segment: the end that carries the links}.
+    """
+    out: Dict[str, str] = {}
+    for name in segs:
+        has_s = bool(end_links.get((name, "s")))
+        has_e = bool(end_links.get((name, "e")))
+        if has_s != has_e:
+            out[name] = "s" if has_s else "e"
+    return out
+
+
 def find_circular(links: List[GfaLink]) -> Set[str]:
     """Segments with a self-link in a consistent orientation, i.e. a circle."""
     return {l.a for l in links if l.a == l.b and l.a_orient == l.b_orient}
@@ -1412,16 +1463,23 @@ class Model:
         (best, low, high) number of linear molecules. The range spans the
         hypotheses the graph cannot tell apart, so it collapses to a single
         number only when the evidence really does pin it down.
+
+        Two kinds of "cannot tell apart" count. Hypotheses within the tie
+        threshold of the best, and hypotheses that differ only by a speculative
+        join - two contigs ending in the same one-sided repeat. The second kind
+        scores lower on purpose, but excluding it from the range would state a
+        chromosome count more confidently than the evidence allows.
         """
         if not self.hypotheses:
             return None
         best = self.hypotheses[0]
-        tied = [
+        near = [
             h
             for h in self.hypotheses
             if any("score within" in c for c in h.contradicting)
+            or any(j.speculative for j in h.joins)
         ] or [best]
-        counts = [len(h.chains) for h in tied]
+        counts = [len(h.chains) for h in near] + [len(best.chains)]
         return len(best.chains), min(counts), max(counts)
 
     def unassigned(self) -> List[SeqRecord]:
@@ -1626,9 +1684,9 @@ def apply_overrides(model: Model, cfg: Dict, log: Log) -> None:
 MARGIN_L = 86
 MARGIN_R = 40
 MARGIN_T = 96
-BAR_W = 26
+BAR_W = 48
 COV_W = 20
-GAP = 66
+GAP = 96
 MAX_BAR_H = 620
 MIN_ORG_H = 52
 LEGEND_H = 150
@@ -1807,15 +1865,10 @@ def _ideogram_frame(model: Model) -> Dict[str, object]:
     probe = Layout(model, show_cov)
     drawn = {s.name for s in probe.order}
 
-    n_tangles = len([t for t in model.tangles if representative_anchors(t, drawn)])
-    subtitle = model.summary_sentence()
-    strapline = (
-        f"{n_tangles} feature(s) annotated from the assembly graph."
-        if model.tangles
-        else "No assembly graph supplied, or no graph features passed the thresholds."
-    )
-    head_lines = wrap_text(subtitle, probe.text_cols) + wrap_text(strapline, probe.text_cols)
-    header_h = 54 + 18 * len(head_lines) + 26 + 13 * (probe.max_label_lines - 1)
+    # v9: no summary paragraph under the panel title. The reasoning belongs in the
+    # report; the figure carries only what points at something it draws.
+    head_lines: List[str] = []
+    header_h = 54 + 26 + 15 * (probe.max_label_lines - 1)
 
     lay = Layout(model, show_cov, header_h)
     legend_svg, legend_bottom = _legend_svg(model, lay)
@@ -1857,14 +1910,9 @@ def render_svg(model: Model, interactive: bool = False) -> str:
 
     # ---- title ----
     add(
-        f'<text x="{MARGIN_L}" y="34" font-size="19" font-weight="600" '
+        f'<text x="{MARGIN_L}" y="40" font-size="{FS_HEADING}" font-weight="600" '
         f'fill="{PALETTE["text"]}">{esc(model.title)}</text>'
     )
-    for i, line in enumerate(head_lines):
-        add(
-            f'<text x="{MARGIN_L}" y="{56 + 18 * i}" font-size="12.5" '
-            f'fill="{PALETTE["muted"]}">{esc(line)}</text>'
-        )
 
     # ---- scale ruler ----
     add(f'<g id="ruler" stroke="{PALETTE["grid"]}">')
@@ -1882,42 +1930,28 @@ def render_svg(model: Model, interactive: bool = False) -> str:
 
     # ---- tangle arcs (behind the bars) ----
     add('<g id="layer-tangles">')
+    # v9 drops the arcs joining one chromosome to another. They were the biggest
+    # source of visual noise and duplicated what the shared segment colours
+    # already say: a repeat linking two chains is drawn as a copy on each. Only
+    # single-point features survive, as a marker beside the bar.
     for t in model.tangles:
         anchors = representative_anchors(t, drawn)
-        colour, dash = TANGLE_STYLE.get(t.type, ("#888888", ""))
-        width = 1.6
-        if t.multiplicity:
-            try:
-                width = min(6.0, 1.4 + 0.6 * float(t.multiplicity))
-            except (TypeError, ValueError):
-                pass
-        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        if len(anchors) >= 2:
+            continue
+        colour, _dash = TANGLE_STYLE.get(t.type, ("#888888", ""))
         attrs = ""
         if interactive:
             attrs = (
                 f' class="tangle" data-id="{esc(t.id)}" data-type="{esc(t.type)}"'
                 f' data-desc="{esc(t.description)}"'
             )
-        if len(anchors) >= 2:
-            for a, b in zip(anchors, anchors[1:]):
-                x1 = lay.x[a.seqname] + BAR_W if lay.cx(b.seqname) >= lay.cx(a.seqname) else lay.x[a.seqname]
-                x2 = lay.x[b.seqname] if lay.cx(b.seqname) >= lay.cx(a.seqname) else lay.x[b.seqname] + BAR_W
-                if a.seqname == b.seqname:
-                    x1 = x2 = lay.x[a.seqname] + BAR_W
-                y1 = lay.y(a.seqname, (a.start + a.end) / 2.0)
-                y2 = lay.y(b.seqname, (b.start + b.end) / 2.0)
-                add(
-                    f'<path d="{_arc_path(x1, y1, x2, y2)}" fill="none" stroke="{colour}" '
-                    f'stroke-width="{width:.1f}" stroke-opacity="0.72"{dash_attr}{attrs}/>'
-                )
-        else:
-            for a in anchors:  # single-point feature: a marker beside the bar
-                y = lay.y(a.seqname, (a.start + a.end) / 2.0)
-                x = lay.x[a.seqname] + BAR_W + 5
-                add(
-                    f'<path d="M {x:.1f} {y:.1f} l 9 -5 l 0 10 z" fill="{colour}" '
-                    f'fill-opacity="0.9"{attrs}/>'
-                )
+        for a in anchors:
+            y = lay.y(a.seqname, (a.start + a.end) / 2.0)
+            x = lay.x[a.seqname] + BAR_W + 5
+            add(
+                f'<path d="M {x:.1f} {y:.1f} l 9 -5 l 0 10 z" fill="{colour}" '
+                f'fill-opacity="0.9"{attrs}/>'
+            )
     add("</g>")
 
     # ---- chromosome bars ----
@@ -1932,9 +1966,47 @@ def render_svg(model: Model, interactive: bool = False) -> str:
                 f' class="chrom" data-name="{esc(s.name)}" data-role="{esc(s.role)}"'
                 f' data-length="{s.length}" data-depth="{s.depth if s.depth is not None else ""}"'
             )
+
+        # v9: a circular molecule is drawn as a ring, not as a bar with a little
+        # circle underneath it. Nothing circular is to scale against the nuclear
+        # chromosomes anyway, so a ring is both truer and less misleading.
+        if s.circular:
+            # the segment's OWN colour, the one it has in the graph panel. Falling
+            # back to the role colour here broke the figure's one promise: edge_11
+            # came out cyan on the left and orange on the right.
+            seg_colour = (
+                s.blocks[0][3] if s.blocks
+                else model.segment_colours.get(s.name, fill)
+            )
+            # an organelle is not on the nuclear scale, so it is drawn thinner
+            # than a chromosome bar as well as round: nothing about it should
+            # invite being read off the Mb axis
+            ring_w = BAR_W * 0.45
+            r = BAR_W * 0.95
+            ccx, ccy = x + BAR_W / 2.0, top + r + 6
+            add(
+                f'<circle cx="{ccx:.1f}" cy="{ccy:.1f}" r="{r:.1f}" fill="none" '
+                f'stroke="{PALETTE["bar_edge"]}" stroke-width="{ring_w + 2.0:.1f}"{battrs}/>'
+            )
+            add(
+                f'<circle cx="{ccx:.1f}" cy="{ccy:.1f}" r="{r:.1f}" fill="none" '
+                f'stroke="{seg_colour}" stroke-width="{ring_w:.1f}"/>'
+            )
+            add(
+                f'<text x="{ccx:.1f}" y="{top - 10:.1f}" font-size="{FS_SUB + 2}" '
+                f'text-anchor="middle" fill="{PALETTE["text"]}" font-weight="600">'
+                f'{esc(s.role)}</text>'
+            )
+            add(
+                f'<text x="{ccx:.1f}" y="{ccy + r * 2 + FS_SUB + 6:.1f}" '
+                f'font-size="{FS_SUB}" text-anchor="middle" fill="{PALETTE["muted"]}">'
+                f'{human_bp(s.length)}</text>'
+            )
+            continue
+
         add(
-            f'<rect x="{x:.1f}" y="{top:.1f}" width="{BAR_W}" height="{h:.1f}" rx="{rx:.1f}" '
-            f'ry="{rx:.1f}" fill="{fill}" fill-opacity="0.82" stroke="{PALETTE["bar_edge"]}" '
+            f'<path d="{_bar_path(x, top, BAR_W, h, 0.0 if s.caps.get("top") else rx, 0.0 if s.caps.get("bottom") else rx)}" '
+            f'fill="{fill}" fill-opacity="0.82" stroke="{PALETTE["bar_edge"]}" '
             f'stroke-width="0.9"{battrs}/>'
         )
 
@@ -1955,19 +2027,23 @@ def render_svg(model: Model, interactive: bool = False) -> str:
                         f'on {esc(s.display)}"'
                     )
                 # Tiled blocks ARE the bar, so the outer ones keep its rounded
-                # ends. Placements are overlays, so they sit inset and square.
-                rt = rx if (s.blocks_tile and bi == 0) else 0
-                rb = rx if (s.blocks_tile and bi == last) else 0
+                # ends - UNLESS a cap sits against that end, in which case the
+                # molecule continues and the corner must be square. Only the
+                # outermost piece of the whole molecule is rounded.
+                rt = rx if (s.blocks_tile and bi == 0 and not s.caps.get("top")) else 0
+                rb = rx if (s.blocks_tile and bi == last and not s.caps.get("bottom")) else 0
                 add(
                     f'<path d="{_bar_path(x + inset, y1, bw, y2 - y1, rt, rb)}" '
                     f'fill="{colour}" fill-opacity="{0.95 if s.blocks_tile else 0.92}" '
                     f'stroke="#ffffff" stroke-width="0.6"{bl}/>'
                 )
-                if y2 - y1 >= 26:
+                # v9: the segment NUMBER, set inside the block, inked white or
+                # dark for contrast against that block's own colour
+                if y2 - y1 >= FS_LABEL + 4:
                     add(
-                        f'<text x="{x + BAR_W / 2:.1f}" y="{(y1 + y2) / 2 + 3.5:.1f}" '
-                        f'font-size="9" text-anchor="middle" fill="#ffffff" '
-                        f'font-weight="600">{esc(seg)}</text>'
+                        f'<text x="{x + BAR_W / 2:.1f}" y="{(y1 + y2) / 2 + FS_LABEL * 0.35:.1f}" '
+                        f'font-size="{FS_LABEL}" text-anchor="middle" fill="{_text_on(colour)}" '
+                        f'font-weight="700">{esc(_segment_number(seg))}</text>'
                     )
             add("</g>")
         if s.name in lay.not_to_scale:
@@ -2008,30 +2084,46 @@ def render_svg(model: Model, interactive: bool = False) -> str:
 
         # re-stroke the outline so bands do not spill past the rounded ends
         add(
-            f'<rect x="{x:.1f}" y="{top:.1f}" width="{BAR_W}" height="{h:.1f}" rx="{rx:.1f}" '
-            f'ry="{rx:.1f}" fill="none" stroke="{PALETTE["bar_edge"]}" stroke-width="1.1"/>'
+            f'<path d="{_bar_path(x, top, BAR_W, h, 0.0 if s.caps.get("top") else rx, 0.0 if s.caps.get("bottom") else rx)}" '
+            f'fill="none" stroke="{PALETTE["bar_edge"]}" stroke-width="1.1"/>'
         )
 
-        # label, wrapped upwards so long chain names do not collide
-        star = "*" if s.name in lay.not_to_scale else ""
-        lines = lay.label_lines.get(s.name, [s.display])
-        for li, line in enumerate(lines):
-            ly = top - 10 - 13 * (len(lines) - 1 - li)
-            suffix = star if li == len(lines) - 1 else ""
-            add(
-                f'<text x="{x + BAR_W / 2:.1f}" y="{ly:.1f}" font-size="11.5" '
-                f'text-anchor="middle" fill="{PALETTE["text"]}" font-weight="600">'
-                f'{esc(line)}{suffix}</text>'
-            )
+        # Repeats attached to a free end, drawn hanging OFF the bar rather than
+        # inside it: they are not part of the molecule and not on the Mb scale,
+        # but they are what tells you this end is a telomere or an rDNA block.
+        # Flush against the bar, not floating beside it, so a molecule reads as
+        # one object: cap, backbone, cap. Only the OUTER corner of the outermost
+        # cap is rounded; every join between blocks is square so they abut.
+        cap_h = BAR_W * 0.62
+        for side, entries in sorted(s.caps.items()):
+            n_side = len(entries)
+            for ci, (seg, colour) in enumerate(entries):
+                if side == "top":
+                    cy = top - cap_h * (ci + 1)
+                    rt = rx if ci == n_side - 1 else 0.0
+                    rb = 0.0
+                else:
+                    cy = top + h + cap_h * ci
+                    rt = 0.0
+                    rb = rx if ci == n_side - 1 else 0.0
+                add(
+                    f'<path d="{_bar_path(x, cy, BAR_W, cap_h, rt, rb)}" fill="{colour}" '
+                    f'fill-opacity="0.95" stroke="{PALETTE["bar_edge"]}" stroke-width="1.1"/>'
+                )
+                add(
+                    f'<text x="{x + BAR_W / 2:.1f}" y="{cy + cap_h / 2 + FS_SUB * 0.36:.1f}" '
+                    f'font-size="{FS_SUB + 1}" text-anchor="middle" fill="{_text_on(colour)}" '
+                    f'font-weight="700">{esc(_segment_number(seg))}</text>'
+                )
+
+        # size only. Chain headings are gone: which contigs belong together is
+        # shown by the numbered blocks in the bar, not by a caption above it.
+        n_top = len(s.caps.get("top", []))
         add(
-            f'<text x="{x + BAR_W / 2:.1f}" y="{top + h + 15:.1f}" font-size="10" '
-            f'text-anchor="middle" fill="{PALETTE["muted"]}">{human_bp(s.length)}</text>'
+            f'<text x="{x + BAR_W / 2:.1f}" y="{top + h + 20 + cap_h * len(s.caps.get("bottom", [])):.1f}" '
+            f'font-size="{FS_SUB}" text-anchor="middle" fill="{PALETTE["muted"]}">'
+            f'{human_bp(s.length)}</text>'
         )
-        if s.circular:
-            add(
-                f'<circle cx="{x + BAR_W / 2:.1f}" cy="{top + h + 30:.1f}" r="5.5" fill="none" '
-                f'stroke="{fill}" stroke-width="2"/>'
-            )
     add("</g>")
 
     # ---- coverage track ----
@@ -2086,29 +2178,36 @@ def _unassigned_panel_svg(model: Model, lay: Layout, interactive: bool) -> str:
     """
     Sequences that fit no chromosome, kept visibly separate rather than being
     forced into the karyotype or dropped from the figure.
+
+    Drawn as upright bars like the chromosomes, but deliberately narrower and on
+    their own side of a divider, so they read as the same kind of object without
+    implying they belong to the karyotype. Labels only - no sentences.
     """
     items = model.unassigned()
     x, y = lay.panel_x, lay.header_h
-    out = [f'<g id="layer-unassigned" font-family="Helvetica, Arial, sans-serif">']
+    out = ['<g id="layer-unassigned" font-family="Helvetica, Arial, sans-serif">']
     out.append(
         f'<line x1="{x - 14:.1f}" y1="{y - 26:.1f}" x2="{x - 14:.1f}" '
         f'y2="{y + MAX_BAR_H:.1f}" stroke="{PALETTE["grid"]}" stroke-dasharray="3 4"/>'
     )
     out.append(
-        f'<text x="{x:.1f}" y="{y - 24:.1f}" font-size="12" font-weight="600" '
-        f'fill="{PALETTE["text"]}">Not assigned to a chromosome</text>'
-    )
-    total = sum(s.length for s in items)
-    out.append(
-        f'<text x="{x:.1f}" y="{y - 9:.1f}" font-size="10.5" fill="{PALETTE["muted"]}">'
-        f'{len(items)} sequence(s), {human_bp(total)}. Shown separately on purpose.</text>'
+        f'<text x="{x:.1f}" y="{y - 24:.1f}" font-size="{FS_SUB + 2}" font-weight="600" '
+        f'fill="{PALETTE["text"]}">Not assigned</text>'
     )
 
-    row_h, shown = 42.0, items[: int((MAX_BAR_H - 20) / 42)]
-    max_len = max((s.length for s in shown), default=1)
+    col_w = BAR_W * 2.4
+    bw = BAR_W * 0.62
+    max_len = max((s.length for s in items), default=1)
+    top = y + 34.0
+    max_h = 210.0
+    shown = items[: max(int((lay.width - x) / col_w), 1)]
     for i, s in enumerate(shown):
-        ry = y + 6 + i * row_h
-        w = 14 + 96 * (math.log10(max(s.length, 10)) / math.log10(max(max_len, 100)))
+        cx = x + i * col_w
+        # log height: these span kb to tens of kb and would otherwise vanish
+        h = max(
+            18.0,
+            max_h * math.log10(max(s.length, 10)) / math.log10(max(max_len, 100)),
+        )
         colour = model.segment_colours.get(s.name, PALETTE["unassigned"])
         attrs = ""
         if interactive:
@@ -2118,25 +2217,20 @@ def _unassigned_panel_svg(model: Model, lay: Layout, interactive: bool) -> str:
                 f' data-depth="{s.depth if s.depth is not None else ""}"'
             )
         out.append(
-            f'<rect x="{x:.1f}" y="{ry:.1f}" width="{w:.1f}" height="15" rx="4" '
-            f'fill="{colour}" fill-opacity="0.85" stroke="{PALETTE["bar_edge"]}" '
-            f'stroke-width="0.8"{attrs}/>'
+            f'<rect x="{cx:.1f}" y="{top:.1f}" width="{bw:.1f}" height="{h:.1f}" '
+            f'rx="{bw / 2:.1f}" ry="{bw / 2:.1f}" fill="{colour}" fill-opacity="0.9" '
+            f'stroke="{PALETTE["bar_edge"]}" stroke-width="1.1"{attrs}/>'
         )
-        out.append(
-            f'<text x="{x + w + 8:.1f}" y="{ry + 12:.1f}" font-size="10.5" '
-            # numeric entity, not &middot;: standalone SVG has no HTML entity set
-            f'fill="{PALETTE["text"]}">{esc(s.display)} &#183; {human_bp(s.length)}</text>'
-        )
-        for li, line in enumerate(wrap_text(s.note, lay.panel_cols)[:2]):
+        if h >= FS_LABEL + 4:
             out.append(
-                f'<text x="{x:.1f}" y="{ry + 27 + li * 11:.1f}" font-size="9.5" '
-                f'fill="{PALETTE["muted"]}">{esc(line)}</text>'
+                f'<text x="{cx + bw / 2:.1f}" y="{top + h / 2 + FS_LABEL * 0.35:.1f}" '
+                f'font-size="{FS_LABEL}" text-anchor="middle" fill="{_text_on(colour)}" '
+                f'font-weight="700">{esc(_segment_number(s.name))}</text>'
             )
-    if len(items) > len(shown):
         out.append(
-            f'<text x="{x:.1f}" y="{y + 12 + len(shown) * row_h:.1f}" font-size="10.5" '
-            f'fill="{PALETTE["muted"]}">and {len(items) - len(shown)} more, listed in the '
-            f'report</text>'
+            f'<text x="{cx + bw / 2:.1f}" y="{top + h + FS_SUB + 4:.1f}" '
+            f'font-size="{FS_SUB}" text-anchor="middle" fill="{PALETTE["muted"]}">'
+            f'{human_bp(s.length)}</text>'
         )
     out.append("</g>")
     return "\n".join(out)
@@ -2162,6 +2256,15 @@ def _tick_label(v: int) -> str:
 
 
 def _legend_svg(model: Model, lay: Layout) -> Tuple[str, float]:
+    """
+    v9: no floating key, no footnote block. Everything the reader needs is a
+    label attached to the thing it describes, so this now draws nothing. The
+    function survives because the layout asks it where the figure ends.
+    """
+    return "", lay.header_h + MAX_BAR_H + 40
+
+
+def _legend_svg_unused(model: Model, lay: Layout) -> Tuple[str, float]:
     y0 = lay.header_h + MAX_BAR_H + 76
     out = [f'<g id="legend" font-size="11" fill="{PALETTE["text"]}">']
     x = MARGIN_L
@@ -2779,6 +2882,27 @@ CLASS_COLOUR = {
 }
 BACKBONE_COLOURS = ["#4a7ba7", "#5f9e6e", "#a87f4a", "#7d6ba7", "#3f8f9e"]
 
+# The figure palette (v9 design). One maximally distinct colour per segment,
+# reused in both panels, so a node in the graph can be found on a chromosome by
+# colour alone. Class colours are NOT used in the figures any more; CLASS_COLOUR
+# survives only for the text report.
+SEGMENT_COLOURS = [
+    "#e6194b",  # red
+    "#4363d8",  # blue
+    "#3cb44b",  # green
+    "#f58231",  # orange
+    "#911eb4",  # purple
+    "#42d4f4",  # cyan
+    "#f032e6",  # magenta
+    "#9a6324",  # brown
+    "#7ba428",  # olive
+    "#ffe119",  # yellow
+]
+UNPLACED_GREY = "#b8b8b8"
+
+# Type scale for the figures (v9): title, panel heading, label, sub-label.
+FS_TITLE, FS_HEADING, FS_LABEL, FS_SUB = 40, 32, 27, 18
+
 CLASS_LABEL = {
     "backbone": "single-copy backbone",
     "repeat": "repeat",
@@ -2808,23 +2932,36 @@ def assign_segment_colours(calls: List["SegmentCall"]) -> Dict[str, str]:
     One colour per segment, used by BOTH figures so a segment can be traced from
     the assembly graph to the chromosome it ends up in.
 
-    Backbone segments each get their own hue, cycling the palette from the worked
-    example. Everything else keeps its class colour, because for repeats and
-    organelles the category is what you want to see, and there are few of them.
-    Assignment is by descending length, so it is stable between runs.
+    EVERY segment gets its own maximally distinct colour, not a colour for its
+    inferred class: the figure's job is correspondence between the two panels,
+    and a shared class colour destroys that. Assignment is by descending length,
+    so it is stable between runs. Once the palette is exhausted it is cycled and
+    lightened, which keeps later segments distinguishable from earlier ones.
     """
     colours: Dict[str, str] = {}
-    backbone = sorted(
-        (c for c in calls if c.cls == "backbone"), key=lambda c: (-c.length, c.name)
-    )
-    for i, c in enumerate(backbone):
-        base = BACKBONE_COLOURS[i % len(BACKBONE_COLOURS)]
-        # after one pass through the palette, lighten so repeats stay distinct
-        cycle = i // len(BACKBONE_COLOURS)
-        colours[c.name] = base if cycle == 0 else _lighten(base, 0.22 * cycle)
-    for c in calls:
-        colours.setdefault(c.name, CLASS_COLOUR.get(c.cls, "#cfcfcf"))
+    ordered = sorted(calls, key=lambda c: (-c.length, c.name))
+    for i, c in enumerate(ordered):
+        base = SEGMENT_COLOURS[i % len(SEGMENT_COLOURS)]
+        cycle = i // len(SEGMENT_COLOURS)
+        colours[c.name] = base if cycle == 0 else _lighten(base, 0.26 * cycle)
     return colours
+
+
+def _text_on(hex_colour: str) -> str:
+    """Black or white, whichever stays legible on the given fill."""
+    try:
+        r, g, b = (int(hex_colour[i : i + 2], 16) for i in (1, 3, 5))
+    except (ValueError, IndexError):
+        return "#1a1a1a"
+    # sRGB relative luminance, good enough for picking ink
+    lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+    return "#1a1a1a" if lum > 0.55 else "#ffffff"
+
+
+def _segment_number(name: str) -> str:
+    """The digits in a segment name: 'edge_11' -> '11'. Falls back to the name."""
+    m = re.findall(r"\d+", name)
+    return m[-1] if m else name
 
 
 def _lighten(hex_colour: str, amount: float) -> str:
@@ -2950,13 +3087,72 @@ def gc_fraction(seq: str) -> Optional[float]:
 
 
 def count_telomere_motifs(seq: str, motifs: Seq[str]) -> Dict[str, int]:
-    """Non-overlapping counts of each motif and its reverse complement."""
+    """
+    Non-overlapping counts of each motif and its reverse complement, ANYWHERE in
+    the sequence.
+
+    These are raw occurrences and are NOT evidence of a telomere. A 9 Mb contig
+    contains roughly 2*L/4**k copies of any k-mer by chance - about 17,600
+    TTAGGs - so this count says almost nothing on its own, and the shortest
+    motif in the set always wins a naive argmax. Use find_telomere_arrays for
+    anything that has to be true. Kept only to report background composition.
+    """
     up = seq.upper()
     out: Dict[str, int] = {}
     for m in motifs:
         n = up.count(m.upper()) + up.count(revcomp(m))
         if n:
             out[m.upper()] = n
+    return out
+
+
+def find_telomere_arrays(
+    seq: str, motifs: Seq[str], window: int, min_units: int
+) -> Dict[str, Tuple[str, int, int]]:
+    """
+    Real telomere evidence: a TANDEM ARRAY of a motif, near an END of the
+    sequence. Returns {end: (motif, units, offset)} for ends 's' (sequence
+    start) and 'e' (sequence end), where offset is the distance in bp from that
+    end to the array.
+
+    Three things distinguish this from counting k-mers. The search is confined
+    to a window at each end, because a telomere that is not at an end is not a
+    telomere. Only consecutive, perfect repeats count, so a scattered handful of
+    hits scores nothing. And candidates are ranked by the LENGTH IN BASES of the
+    array rather than by the number of hits, which stops a short motif from
+    beating a long one purely by being short.
+
+    A run of even three units is ~4**-18 per position by chance, so min_units
+    can be low without admitting noise; the returned unit count is what tells
+    you how convincing a call really is.
+    """
+    up = seq.upper()
+    n = len(up)
+    if not n:
+        return {}
+    w = min(max(window, 1), n)
+    regions = {"s": (0, w), "e": (max(n - w, 0), n)}
+    out: Dict[str, Tuple[str, int, int]] = {}
+    for end, (lo, hi) in regions.items():
+        sub = up[lo:hi]
+        best: Optional[Tuple[int, str, int, int]] = None  # (bp, motif, units, offset)
+        for m in motifs:
+            mu = m.upper()
+            for variant in {mu, revcomp(mu)}:
+                if not variant:
+                    continue
+                for match in re.finditer(f"(?:{re.escape(variant)})+", sub):
+                    units = len(match.group(0)) // len(variant)
+                    if units < min_units:
+                        continue
+                    bp = units * len(variant)
+                    start = lo + match.start()
+                    offset = start if end == "s" else n - (start + len(match.group(0)))
+                    cand = (bp, mu, units, offset)
+                    if best is None or cand[0] > best[0]:
+                        best = cand
+        if best:
+            out[end] = (best[1], best[2], best[3])
     return out
 
 
@@ -3152,6 +3348,8 @@ class SegmentCall:
     component_size: int
     gc: Optional[float] = None
     telomere_motifs: Dict[str, int] = field(default_factory=dict)
+    # {end: (motif, units, offset_bp)} - the only telomere evidence worth acting on
+    telomere_arrays: Dict[str, Tuple[str, int, int]] = field(default_factory=dict)
     path_terminal: int = 0
     path_interior: int = 0
     path_consecutive_repeats: int = 0
@@ -3288,6 +3486,12 @@ def call_segments(
                 telomere_motifs=count_telomere_motifs(sequence, args.telomere_motif)
                 if sequence
                 else {},
+                telomere_arrays=find_telomere_arrays(
+                    sequence, args.telomere_motif,
+                    args.telomere_window, args.min_telomere_units,
+                )
+                if sequence
+                else {},
                 path_terminal=terminal.get(name, 0),
                 path_interior=interior.get(name, 0),
                 path_consecutive_repeats=consec.get(name, 0),
@@ -3386,12 +3590,23 @@ def call_segments(
             )
             if c.cls in ("short_single_copy", "unclassified"):
                 c.cls = "at_rich"
-        if c.telomere_motifs:
+        if c.telomere_arrays:
+            for end in ("s", "e"):
+                if end not in c.telomere_arrays:
+                    continue
+                motif, units, off = c.telomere_arrays[end]
+                where = "start" if end == "s" else "end"
+                r.append(
+                    f"telomere repeat array at the {where}: ({motif})x{units}, "
+                    f"{units * len(motif)} bp, {off:,} bp from the {where} "
+                    f"({TELOMERE_MOTIFS.get(motif, 'user-supplied motif')})"
+                )
+        elif c.telomere_motifs:
             tot = sum(c.telomere_motifs.values())
-            best = max(c.telomere_motifs.items(), key=lambda kv: kv[1])
             r.append(
-                f"{tot} telomere motif occurrence(s), mostly {best[0]} "
-                f"({TELOMERE_MOTIFS.get(best[0], 'user-supplied motif')})"
+                f"no telomere repeat array at either end; the {tot} scattered motif "
+                f"occurrence(s) are consistent with chance and are not evidence of a "
+                f"chromosome end"
             )
         if c.path_terminal or c.path_interior:
             if c.path_terminal > c.path_interior:
@@ -3439,10 +3654,24 @@ class Join:
     a: str
     b: str
     via: List[str]  # intermediate segment names, in order
+    # which physical end of a and of b the route leaves from / arrives at. A
+    # chain may consume each end at most once, which is what stops two different
+    # joins from both hanging off the same side of a contig.
+    a_end: str = "e"
+    b_end: str = "s"
+    # True when the route is NOT supported by a traversable path: the two
+    # segments merely end in the same one-sided repeat. Kept as a declared
+    # alternative rather than dropped, because it is often the biologically
+    # right answer - it is just not something this graph establishes.
+    speculative: bool = False
 
     @property
     def key(self) -> Tuple[str, str]:
         return tuple(sorted((self.a, self.b)))  # type: ignore
+
+    @property
+    def ends(self) -> Tuple[Tuple[str, str], Tuple[str, str]]:
+        return ((self.a, self.a_end), (self.b, self.b_end))
 
     def describe(self) -> str:
         route = " - ".join([self.a] + self.via + [self.b])
@@ -3451,19 +3680,19 @@ class Join:
 
 def telomeric_segments(calls: List[SegmentCall], args) -> Dict[str, int]:
     """
-    Segments carrying enough telomere repeat to look like a chromosome end.
-    A threshold on motif density rather than presence, because a handful of
-    TTAGGG hits occurs by chance in any sequence of reasonable length.
+    Segments carrying a genuine telomere repeat ARRAY at one or both ends.
+    The value is the number of repeat units in the best array, which is the
+    honest measure of how strong the call is.
+
+    This used to threshold on whole-sequence motif density, which counts chance
+    k-mers: a 9 Mb contig contains ~17,600 TTAGGs by accident and sailed through.
+    Only tandem arrays near a sequence end count now.
     """
     out: Dict[str, int] = {}
     for c in calls:
-        n = sum(c.telomere_motifs.values())
-        if not n or not c.length:
+        if not c.telomere_arrays:
             continue
-        motif_len = max((len(m) for m in c.telomere_motifs), default=6)
-        covered = n * motif_len / float(c.length)
-        if n >= args.min_telomere_motifs and covered >= args.min_telomere_fraction:
-            out[c.name] = n
+        out[c.name] = max(units for _m, units, _off in c.telomere_arrays.values())
     return out
 
 
@@ -3565,30 +3794,49 @@ class Hypothesis:
 
 
 def find_joins(
-    calls: List[SegmentCall], adj: Dict[str, Set[str]], max_hops: int
+    calls: List[SegmentCall],
+    end_links: Dict[Tuple[str, str], Set[Tuple[str, str]]],
+    max_hops: int,
 ) -> List[Join]:
     """
     Every route between two backbone segments that passes only through
     non-backbone segments, using at most max_hops intermediates. Low-depth
     segments are deliberately included: they look ignorable but they change the
     topology.
+
+    The traversal is END-AWARE, and that is the whole point. A GFA link joins a
+    specific end of one segment to a specific end of another, so a route that
+    passes THROUGH an intermediate must arrive at one of its ends and leave by
+    the opposite one. Walking a segment-level adjacency instead - which is what
+    this function used to do - invents routes that enter and leave through the
+    same end, which no assembly graph permits, and it lets a segment with links
+    on one end only masquerade as a bridge when it is really a tip.
     """
     backbone = {c.name for c in calls if c.cls == "backbone"}
-    joins: Dict[Tuple[str, str, Tuple[str, ...]], Join] = {}
+    joins: Dict[Tuple[str, str, str, str, Tuple[str, ...]], Join] = {}
     for start in backbone:
-        # depth-limited DFS through non-backbone nodes
-        stack: List[Tuple[str, List[str]]] = [(start, [])]
-        while stack:
-            node, via = stack.pop()
-            for nb in sorted(adj.get(node, ())):
-                if nb == start or nb in via:
-                    continue
-                if nb in backbone:
-                    j = Join(a=start, b=nb, via=list(via))
-                    key = (min(start, nb), max(start, nb), tuple(via))
-                    joins.setdefault(key, j)
-                elif len(via) < max_hops:
-                    stack.append((nb, via + [nb]))
+        for start_end in ("s", "e"):
+            # each stack entry: the end we are about to leave from, and the
+            # intermediates consumed so far
+            stack: List[Tuple[Tuple[str, str], List[str]]] = [((start, start_end), [])]
+            while stack:
+                (node, exit_end), via = stack.pop()
+                for nb, nb_end in sorted(end_links.get((node, exit_end), ())):
+                    if nb == start or nb in via:
+                        continue
+                    if nb in backbone:
+                        j = Join(
+                            a=start, b=nb, via=list(via),
+                            a_end=start_end, b_end=nb_end,
+                        )
+                        key = (start, start_end, nb, nb_end, tuple(via))
+                        # the same physical route found from the other direction
+                        rev = (nb, nb_end, start, start_end, tuple(reversed(via)))
+                        if rev not in joins:
+                            joins.setdefault(key, j)
+                    elif len(via) < max_hops:
+                        # enter nb at nb_end, so we may only leave by its far end
+                        stack.append(((nb, OTHER_END[nb_end]), via + [nb]))
     return list(joins.values())
 
 
@@ -3615,7 +3863,9 @@ def enumerate_hypotheses(
     if telomeric:
         log.info(
             "telomere-bearing segment(s): "
-            + ", ".join(f"{k} ({v} motifs)" for k, v in sorted(telomeric.items()))
+            + ", ".join(
+                f"{k} (array of {v} repeat units)" for k, v in sorted(telomeric.items())
+            )
         )
     else:
         log.warn(
@@ -3677,6 +3927,21 @@ def enumerate_hypotheses(
             chains, chosen, lengths, cn, cls, connector_reach, alt_count, alt_routes,
             adj, telomeric, args, end_adj
         )
+        spec = [j for j in chosen if j.speculative]
+        if spec:
+            # not established by the graph, so it must not be allowed to win on
+            # score alone; it stays in the list, clearly labelled
+            score -= args.speculative_penalty * len(spec)
+            for j in spec:
+                con = list(con) + [
+                    f"the join {j.a} - {j.b} is NOT supported by a traversable path: both "
+                    f"segments simply end in {j.via[0]}, which has links on one side only. "
+                    f"Resolving it needs evidence from outside this graph."
+                ]
+                res = list(res) + [
+                    f"long reads spanning {j.via[0]}, or Hi-C contact between {j.a} and "
+                    f"{j.b}, would settle whether they join"
+                ]
         results.append(
             Hypothesis(0, chains, chosen, score, sup, con, res, capped, opened)
         )
@@ -3718,9 +3983,17 @@ def _linear_forest(vertices: List[str], edges: List[Join]) -> Optional[List[List
             x = parent[x]
         return x
 
+    used_ends: Set[Tuple[str, str]] = set()
     for e in edges:
         if e.a not in parent or e.b not in parent:
             return None
+        # A contig has two ends. Two joins cannot both attach to the same one,
+        # so an end is consumed the first time a join uses it. Degree <= 2 alone
+        # does not catch this: both joins at a vertex could be on one side.
+        for end in e.ends:
+            if end in used_ends:
+                return None
+            used_ends.add(end)
         deg[e.a] += 1
         deg[e.b] += 1
         if deg[e.a] > 2 or deg[e.b] > 2:
@@ -4234,14 +4507,26 @@ def segment_draw_length(length: int, args) -> float:
     """Drawn length of a segment. Square-root scaled, as a compromise between
     Bandage's proportional default (which makes a 2 kb repeat invisible next to
     a 9 Mb contig) and a log scale (which makes them nearly equal)."""
-    return min(max(10.0 + args.graph_length_scale * math.sqrt(max(length, 1)), 12.0),
+    floor = segment_thickness() * 1.6
+    px_per_bp = getattr(args, "graph_px_per_bp", None)
+    if px_per_bp:
+        # Same bases-per-pixel as the chromosome panel, so a contig is the same
+        # size in both. Anything too short to draw at that scale is clamped to
+        # the floor and is therefore drawn LARGER than true - unavoidable if a
+        # 2 kb segment is to be visible beside a 9 Mb one, but it only ever
+        # overstates the small ones.
+        return max(length * px_per_bp, floor)
+    return min(max(10.0 + args.graph_length_scale * math.sqrt(max(length, 1)), floor),
                args.graph_max_segment_px)
 
 
-def segment_thickness(depth: Optional[float]) -> float:
-    if depth is None or depth <= 0:
-        return 5.0
-    return min(max(4.0 + 1.7 * math.log10(depth + 1.0), 4.0), 12.0)
+def segment_thickness(depth: Optional[float] = None) -> float:
+    """
+    Uniform, and equal to the chromosome bar width (v9 design). Thickness used to
+    track read depth, but that put a second variable into the ribbon width and
+    made the two panels hard to match up; depth is now carried by the label only.
+    """
+    return float(BAR_W)
 
 
 def bandage_layout(
@@ -4291,20 +4576,35 @@ def bandage_layout(
         b_pt = l.b + ("\x00s" if l.b_orient == "+" else "\x00e")
         if a_pt == b_pt:
             continue
-        springs.append((idx[a_pt], idx[b_pt], 10.0, 0.45))
+        # A junction is given a RADIUS rather than being a single point. Pulling
+        # every linked end onto one coordinate made four contigs meeting at the
+        # same hub (edge_9 has five ends on one side) collapse into a pile you
+        # could not read. Held about a ribbon-width apart, they spread into an
+        # arc and each join shows as its own short connector.
+        springs.append((idx[a_pt], idx[b_pt], segment_thickness() * 1.15, 4.0))
 
-    k = max(radius / max(math.sqrt(n_pts), 1.0), 14.0)
+    k = max(radius / max(math.sqrt(n_pts), 1.0), 135.0)
     iters = int(min(500, max(80, 9000 / max(n_pts, 1))))
     if n_pts > 400:
         log.info(f"graph layout: {n_pts} endpoints, {iters} iterations (this can take a moment)")
     temp = radius * 0.35
 
+    # Endpoint pairs joined by a link must be free to touch. Left in the
+    # all-pairs repulsion they settle at k^2/d against the spring, which for
+    # k=46 parks them 40-135 px apart and turns every junction into a long bar.
+    linked_pairs = {
+        (min(a, b), max(a, b)) for a, b, rest, _s in springs
+        if rest <= segment_thickness() * 1.2
+    }
+
     for step in range(iters):
         disp = [[0.0, 0.0] for _ in range(n_pts)]
-        # repulsion, all pairs
+        # repulsion, all pairs except those a link is trying to hold together
         for i in range(n_pts):
             xi, yi = pos[i]
             for j in range(i + 1, n_pts):
+                if (i, j) in linked_pairs:
+                    continue
                 dx = xi - pos[j][0]
                 dy = yi - pos[j][1]
                 d2 = dx * dx + dy * dy
@@ -4328,10 +4628,12 @@ def bandage_layout(
             disp[a][1] -= uy * f
             disp[b][0] += ux * f
             disp[b][1] += uy * f
-        # weak pull to the centre so detached components do not drift away
+        # pull to the centre so detached components (an unplaced contig, an
+        # organelle) stay near the main mass instead of stranding themselves in a
+        # far corner and stretching the canvas around a lot of white space
         for i in range(n_pts):
-            disp[i][0] -= pos[i][0] * 0.012
-            disp[i][1] -= pos[i][1] * 0.012
+            disp[i][0] -= pos[i][0] * 0.038
+            disp[i][1] -= pos[i][1] * 0.038
         # move, capped by the cooling temperature
         for i in range(n_pts):
             dx, dy = disp[i]
@@ -4341,19 +4643,80 @@ def bandage_layout(
             pos[i][1] += dy / d * lim
         temp = max(temp * 0.965, 0.6)
 
+    raw = {
+        n: (
+            pos[idx[n + "\x00s"]][0], pos[idx[n + "\x00s"]][1],
+            pos[idx[n + "\x00e"]][0], pos[idx[n + "\x00e"]][1],
+        )
+        for n in names
+    }
+
+    # ---- pack the connected components ----
+    # A spring model left to itself flings a detached contig or an organelle into
+    # a far corner, and the canvas then has to stretch around all that white
+    # space. The components are laid out independently and then packed: the
+    # largest keeps its position, the rest are set apart in a row beneath it.
+    parent = {n: n for n in names}
+
+    def find(a: str) -> str:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for l in links:
+        if l.a in parent and l.b in parent:
+            ra, rb = find(l.a), find(l.b)
+            if ra != rb:
+                parent[ra] = rb
+
+    comps: Dict[str, List[str]] = {}
+    for n in names:
+        comps.setdefault(find(n), []).append(n)
+
+    def bbox(g: List[str]) -> Tuple[float, float, float, float]:
+        cx = [v for n in g for v in (raw[n][0], raw[n][2])]
+        cy = [v for n in g for v in (raw[n][1], raw[n][3])]
+        return min(cx), min(cy), max(cx), max(cy)
+
+    thick = segment_thickness()
+    groups = sorted(comps.values(), key=lambda g: -sum(by_name[n].length for n in g))
+    placed: Dict[str, Tuple[float, float, float, float]] = {n: raw[n] for n in groups[0]}
+    mx0, _my0, _mx1, my1 = bbox(groups[0])
+    gap = thick * 3.0
+    cur_x, row_y = mx0, my1 + gap
+    for g in groups[1:]:
+        gx0, gy0, gx1, _gy1 = bbox(g)
+        dx, dy = cur_x - gx0, row_y - gy0
+        for n in g:
+            x1, y1, x2, y2 = raw[n]
+            placed[n] = (x1 + dx, y1 + dy, x2 + dx, y2 + dy)
+        cur_x += (gx1 - gx0) + gap
+
+    # Orient the graph so its long axis is horizontal. A spring layout comes out
+    # in an arbitrary rotation, and a tall one forces a tall figure: the
+    # chromosome panel beside it is much shorter, so most of the canvas ends up
+    # empty and everything has to be shrunk to fit a preview.
+    xs0 = [v for t in placed.values() for v in (t[0], t[2])]
+    ys0 = [v for t in placed.values() for v in (t[1], t[3])]
+    if xs0 and (max(ys0) - min(ys0)) > (max(xs0) - min(xs0)):
+        placed = {
+            n: (y1, -x1, y2, -x2) for n, (x1, y1, x2, y2) in placed.items()
+        }
+
     # normalise into a padded canvas
-    xs = [p[0] for p in pos]
-    ys = [p[1] for p in pos]
-    pad = 90.0
+    xs = [v for t in placed.values() for v in (t[0], t[2])]
+    ys = [v for t in placed.values() for v in (t[1], t[3])]
+    pad = 18.0 + thick * 0.5
     minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
     width = (maxx - minx) + 2 * pad
-    height = (maxy - miny) + 2 * pad + 60
+    height = (maxy - miny) + 2 * pad
     out: Dict[str, Tuple[float, float, float, float]] = {}
     for n in names:
-        s, e = pos[idx[n + "\x00s"]], pos[idx[n + "\x00e"]]
+        x1, y1, x2, y2 = placed[n]
         out[n] = (
-            s[0] - minx + pad, s[1] - miny + pad + 60,
-            e[0] - minx + pad, e[1] - miny + pad + 60,
+            x1 - minx + pad, y1 - miny + pad,
+            x2 - minx + pad, y2 - miny + pad,
         )
     return out, width, height
 
@@ -4378,87 +4741,160 @@ def render_bandage_style_svg(
     ]
     if title:
         P.append(
-            f'<text x="40" y="34" font-size="17" font-weight="600" '
+            f'<text x="40" y="40" font-size="{FS_HEADING}" font-weight="600" '
             f'fill="{PALETTE["text"]}">{esc(title)}</text>'
         )
-    P.append(
-        f'<text x="40" y="{54 if title else 34}" font-size="11" fill="{PALETTE["muted"]}">'
-        f'Segment drawn length tracks sequence length; thickness tracks read depth; colour is '
-        f'the inferred class. Layout is our own and is deterministic.</text>'
-    )
 
-    # links behind the segments
-    P.append('<g id="layer-links" fill="none" stroke="#9a9a9a" stroke-opacity="0.75">')
+    # Parallel segments - two contigs running between the same pair of junctions -
+    # land on almost the same chord and the second one disappears underneath the
+    # first. Bucket by the endpoints they share and fan the bow out, alternating
+    # sign, so each is visible. Without this, edge_7 hides entirely behind edge_2.
+    # Detected from the GRAPH, not from the drawn coordinates: two segments are
+    # parallel when they have the same set of neighbours. Bucketing by pixel
+    # position looked simpler but is far too brittle - edge_2 and edge_7 land in
+    # adjacent buckets and stack anyway.
+    neighbours_of: Dict[str, Set[str]] = defaultdict(set)
     for l in links:
-        if l.a not in geom or l.b not in geom:
+        if l.a == l.b:
+            continue
+        neighbours_of[l.a].add(l.b)
+        neighbours_of[l.b].add(l.a)
+
+    parallel: Dict[Tuple[str, ...], List[str]] = defaultdict(list)
+    for name in sorted(geom):
+        nb = neighbours_of.get(name, set())
+        if len(nb) >= 2:
+            parallel[tuple(sorted(nb))].append(name)
+    bow_slot: Dict[str, int] = {}
+    label_t: Dict[str, float] = {}
+    for group in parallel.values():
+        if len(group) < 2:
+            continue
+        # 0, +1, -1, +2, -2 ... so the bundle spreads either side of the chord
+        for i, nm in enumerate(sorted(group)):
+            bow_slot[nm] = ((i + 1) // 2) * (1 if i % 2 else -1)
+            # and stagger the labels ALONG the ribbons. Fanning separates the
+            # middles but the ends still converge, so labels placed at the same
+            # fraction of two bundled segments collide however wide the fan.
+            label_t[nm] = 0.30 + 0.40 * (i / max(len(group) - 1, 1))
+
+    # Segments carrying a self-link are circular molecules and are drawn as rings
+    # rather than as ribbons with a loop hanging off one end.
+    circular = {l.a for l in links if l.a == l.b}
+    w = segment_thickness()
+
+    # Junction stubs, behind the segments. Linked ends already abut after layout,
+    # so a link is a short dark connector rather than a long thin line.
+    P.append(
+        f'<g id="layer-links" fill="none" stroke="{PALETTE["bar_edge"]}" '
+        f'stroke-linecap="round">'
+    )
+    for l in links:
+        if l.a not in geom or l.b not in geom or l.a == l.b:
             continue
         ax, ay = (geom[l.a][2], geom[l.a][3]) if l.a_orient == "+" else (geom[l.a][0], geom[l.a][1])
         bx, by = (geom[l.b][0], geom[l.b][1]) if l.b_orient == "+" else (geom[l.b][2], geom[l.b][3])
-        if l.a == l.b:
-            # self-link: a small loop off the relevant terminal
-            P.append(
-                f'<path d="M {ax:.1f} {ay:.1f} c 16 -20, 40 -20, 30 2 c -6 14, -26 12, -30 -2" '
-                f'stroke-width="1.8"/>'
-            )
-            continue
-        mx, my = (ax + bx) / 2, (ay + by) / 2
-        # bow the link slightly so parallel links stay distinguishable
-        nx, ny = -(by - ay), (bx - ax)
-        nlen = math.hypot(nx, ny) or 1.0
-        bow = min(18.0, math.hypot(bx - ax, by - ay) * 0.22)
-        cx, cy = mx + nx / nlen * bow, my + ny / nlen * bow
+        # Thin. The ribbons are drawn with ROUND ends, so two of them meeting at
+        # an angle no longer leave a white wedge at the corner and the connector
+        # does not have to be wide enough to cover one. A junction should read as
+        # a join, not as another piece of sequence.
         P.append(
-            f'<path d="M {ax:.1f} {ay:.1f} Q {cx:.1f} {cy:.1f} {bx:.1f} {by:.1f}" '
-            f'stroke-width="1.6"/>'
+            f'<line x1="{ax:.1f}" y1="{ay:.1f}" x2="{bx:.1f}" y2="{by:.1f}" '
+            f'stroke-width="{w * 0.26:.1f}"/>'
         )
     P.append("</g>")
 
-    # segments as thick tapered paths
-    P.append('<g id="layer-segments" stroke-linecap="round" fill="none">')
+    # segments as thick ribbons of uniform width
+    P.append('<g id="layer-segments" fill="none">')
+    rings: Dict[str, Tuple[float, float, float]] = {}
     for name, (x1, y1, x2, y2) in sorted(geom.items(), key=lambda kv: -by_name[kv[0]].length):
         c = by_name[name]
         colour = colours.get(name, "#cfcfcf")
-        w = segment_thickness(c.depth)
+        if name in circular:
+            # a ring whose circumference matches the drawn length of the segment
+            seg_len = max(segment_draw_length(c.length, args), 30.0)
+            r = max(seg_len / (2 * math.pi), 13.0)
+            cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+            rings[name] = (cx, cy, r)
+            P.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" '
+                     f'stroke="{PALETTE["bar_edge"]}" stroke-width="{w + 2.0:.1f}"/>')
+            P.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" '
+                     f'stroke="{colour}" stroke-width="{w:.1f}"/>')
+            continue
         # a gentle bow, so nothing looks like a ruler
         mx, my = (x1 + x2) / 2, (y1 + y2) / 2
         nx, ny = -(y2 - y1), (x2 - x1)
         nlen = math.hypot(nx, ny) or 1.0
         bow = min(26.0, math.hypot(x2 - x1, y2 - y1) * 0.14)
+        slot = bow_slot.get(name, 0)
+        if slot:
+            # fan a bundle of parallel segments apart rather than stacking them
+            bow = slot * max(
+                abs(bow),
+                min(math.hypot(x2 - x1, y2 - y1) * 0.42, segment_thickness() * 6.0),
+            )
         cx, cy = mx + nx / nlen * bow, my + ny / nlen * bow
         d = f"M {x1:.1f} {y1:.1f} Q {cx:.1f} {cy:.1f} {x2:.1f} {y2:.1f}"
-        # dark casing then the colour, which is what gives Bandage its solidity
-        P.append(f'<path d="{d}" stroke="{PALETTE["bar_edge"]}" stroke-width="{w + 2.2:.1f}" '
-                 f'stroke-opacity="0.5"/>')
-        P.append(f'<path d="{d}" stroke="{colour}" stroke-width="{w:.1f}"/>')
-        if c.at_rich:
-            P.append(f'<path d="{d}" stroke="{CLASS_COLOUR["at_rich"]}" '
-                     f'stroke-width="{w:.1f}" stroke-dasharray="3 5"/>')
+        # dark casing then the colour, flat butt caps so segments abut cleanly
+        P.append(f'<path d="{d}" stroke="{PALETTE["bar_edge"]}" stroke-width="{w + 2.0:.1f}" '
+                 f'stroke-linecap="round"/>')
+        P.append(f'<path d="{d}" stroke="{colour}" stroke-width="{w:.1f}" '
+                 f'stroke-linecap="round"/>')
     P.append("</g>")
 
-    # labels
+    # labels: the segment number sits INSIDE the ribbon, coverage beside it
     label_all = len(calls) <= args.graph_label_limit
-    P.append(f'<g id="layer-labels" font-size="9.5" fill="{PALETTE["text"]}">')
+    P.append(f'<g id="layer-labels" fill="{PALETTE["text"]}">')
     for name, (x1, y1, x2, y2) in geom.items():
         c = by_name[name]
         if not label_all and c.cls == "backbone" and c.length < args.backbone_min_length:
             continue
-        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-        nx, ny = -(y2 - y1), (x2 - x1)
-        nlen = math.hypot(nx, ny) or 1.0
-        off = segment_thickness(c.depth) + 11
-        lx, ly = mx + nx / nlen * off, my + ny / nlen * off
-        cn = f"{c.copy_number:.1f}x" if c.copy_number is not None else "?"
+        colour = colours.get(name, "#cfcfcf")
+        if name in rings:
+            cx, cy, r = rings[name]
+            nx, ny, mx, my = 0.0, -1.0, cx, cy - r
+        else:
+            cxm, cym = (x1 + x2) / 2, (y1 + y2) / 2
+            nx, ny = -(y2 - y1), (x2 - x1)
+            nlen = math.hypot(nx, ny) or 1.0
+            nx, ny = nx / nlen, ny / nlen
+            bow = min(26.0, math.hypot(x2 - x1, y2 - y1) * 0.14)
+            slot = bow_slot.get(name, 0)
+            if slot:
+                bow = slot * max(
+                    abs(bow),
+                    min(math.hypot(x2 - x1, y2 - y1) * 0.42, segment_thickness() * 6.0),
+                )
+            # Evaluate the drawn quadratic Bezier at this segment's own t, and
+            # take the normal from the tangent there. Bundled segments get
+            # different t values so their labels never stack.
+            qx, qy = cxm + nx * bow, cym + ny * bow  # the control point
+            t = label_t.get(name, 0.5)
+            u = 1.0 - t
+            mx = u * u * x1 + 2 * u * t * qx + t * t * x2
+            my = u * u * y1 + 2 * u * t * qy + t * t * y2
+            tx = 2 * u * (qx - x1) + 2 * t * (x2 - qx)
+            ty = 2 * u * (qy - y1) + 2 * t * (y2 - qy)
+            tlen = math.hypot(tx, ty) or 1.0
+            nx, ny = -ty / tlen, tx / tlen
+        # number inside the ribbon, inked for contrast against its own colour
         P.append(
-            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" font-weight="600">'
-            f'{esc(name)}</text>'
+            f'<text x="{mx:.1f}" y="{my + FS_LABEL * 0.35:.1f}" text-anchor="middle" '
+            f'font-size="{FS_LABEL}" font-weight="700" fill="{_text_on(colour)}">'
+            f'{esc(_segment_number(name))}</text>'
         )
-        P.append(
-            f'<text x="{lx:.1f}" y="{ly + 10:.1f}" text-anchor="middle" font-size="8" '
-            f'fill="{PALETTE["muted"]}">{human_bp(c.length)} &#183; {cn}</text>'
-        )
+        # coverage only, set clear of the ribbon. Skipped on very short segments,
+        # where there is no room for it to sit anywhere it would not collide.
+        drawn_len = math.hypot(x2 - x1, y2 - y1)
+        if c.depth is not None and (name in rings or drawn_len >= w * 2.2):
+            off = w / 2 + FS_SUB + 8
+            lx, ly = mx + nx * off, my + ny * off
+            P.append(
+                f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
+                f'font-size="{FS_SUB}" fill="{PALETTE["muted"]}">{c.depth:.0f}x</text>'
+            )
     P.append("</g>")
 
-    P.append(_graph_legend_svg(calls, height))
     P.append("</svg>")
     return "\n".join(P)
 
@@ -4696,6 +5132,32 @@ def model_from_hypothesis(
         rec = SeqRecord(name=name, length=cursor, role="chromosome", label=label, manual=True)
         rec.blocks = blocks
         rec.blocks_tile = True
+
+        # Repeats hanging off the FREE ends of this molecule. They are not part
+        # of the chain - the graph does not let you walk through them - but they
+        # are the most informative thing at a chromosome end (a telomeric array,
+        # an rDNA block), and leaving them out of the figure made the right panel
+        # look like the assembly had no repeats at all.
+        used_ends = {e for j in hyp.joins for e in j.ends}
+        backbone_names = {c.name for c in calls if c.cls == "backbone"}
+        rec.caps = {}
+        if len(chain) == 1:
+            terminals = [(chain[0], "s", "top"), (chain[0], "e", "bottom")]
+        else:
+            terminals = [
+                (chain[0], end, "top") for end in ("s", "e")
+            ] + [(chain[-1], end, "bottom") for end in ("s", "e")]
+        for seg, end, side in terminals:
+            if (seg, end) in used_ends:
+                continue
+            nb = sorted(
+                n for n in end_adj.get((seg, end), ())
+                if n not in backbone_names and n not in members
+            )
+            if nb:
+                rec.caps.setdefault(side, []).extend(
+                    (n, colours.get(n, "#cfcfcf")) for n in nb
+                )
         capped, opened, cap_notes = chain_end_status(
             chain, {v for j in hyp.joins for v in j.via}, adj, telomeric, end_adj
         )
@@ -5090,7 +5552,7 @@ class _Rand:
 # ==========================================================================
 # pipeline
 # ==========================================================================
-PAIR_GUTTER = 90.0
+PAIR_GUTTER = 96.0
 
 
 def render_paired_svg(
@@ -5109,18 +5571,22 @@ def render_paired_svg(
     """
     adj = build_adjacency(links)
     pos, gw, gh, _ = _graph_layout(calls, adj)
-    graph_svg = graph_svg_for_style(calls, links, "", colours, args, log)
-    if args.graph_style == "bandage":
-        gw, gh = _svg_width(graph_svg), _svg_height(graph_svg)
     # the combined figure carries the title, so the panels must not repeat it
     real_title = model.title
-    model.title = "Resolved into linear chromosomes"
+    model.title = "Hypothesis of chromosome structure"
     try:
         ideo_svg = render_svg(model)
         lay, _, _, _ = ideogram_geometry(model)
         anchors = ideogram_block_anchors(model)
     finally:
         model.title = real_title
+
+    # Build the chromosome panel FIRST so the graph panel can borrow its scale:
+    # a contig should be the same size in both halves of the figure.
+    args.graph_px_per_bp = lay.scale
+    graph_svg = graph_svg_for_style(calls, links, "", colours, args, log)
+    if args.graph_style == "bandage":
+        gw, gh = _svg_width(graph_svg), _svg_height(graph_svg)
 
     iw, ih = lay.width, _svg_height(ideo_svg)
 
@@ -5149,28 +5615,25 @@ def render_paired_svg(
         # rotating our redraw a quarter turn trades a very wide figure for a
         # taller, narrower one that fits a page or a slide
         gw_eff, gh_eff = gh, gw
-        left_label = "Assembly graph, our redraw, rotated a quarter turn"
+        left_label = "Assembly graph"
     else:
         gw_eff, gh_eff = gw, gh
-        left_label = "Assembly graph, our redraw of the GFA"
+        left_label = "Assembly graph"
 
     ox = gw_eff + PAIR_GUTTER  # x offset of the ideogram panel
     width = ox + iw
-    height = max(gh_eff, ih) + 78
-    top = 78.0
+    top = 84.0
+    height = max(gh_eff, ih) + top
 
     P = [
         f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
         f'width="{width:.0f}" height="{height:.0f}" '
         f'viewBox="0 0 {width:.0f} {height:.0f}" font-family="Helvetica, Arial, sans-serif">',
         f'<rect width="100%" height="100%" fill="{PALETTE["bg"]}"/>',
-        f'<text x="60" y="30" font-size="19" font-weight="600" fill="{PALETTE["text"]}">'
-        f'{esc(model.title)}</text>',
-        f'<text x="60" y="49" font-size="12" fill="{PALETTE["muted"]}">'
-        f'Assembly graph, left, resolved into linear chromosomes, right. A segment keeps the '
-        f'same colour in both panels.</text>',
-        f'<text x="60" y="68" font-size="11" font-weight="600" fill="{PALETTE["muted"]}">'
-        f'{esc(left_label)}</text>',
+        f'<text x="60" y="44" font-size="{FS_TITLE}" font-weight="600" '
+        f'fill="{PALETTE["text"]}">{esc(model.title)}</text>',
+        f'<text x="60" y="{top - 10:.0f}" font-size="{FS_HEADING}" font-weight="600" '
+        f'fill="{PALETTE["text"]}">{esc(left_label)}</text>',
     ]
 
     if external:
@@ -5502,8 +5965,64 @@ def build_model_graph_first(args, log: Log) -> Tuple[Model, Dict[str, str]]:
 
     calls, baseline = call_segments(segs, links, contigs, seq_by_segment, args, log)
     adj = build_adjacency(links)
-    joins = find_joins(calls, adj, args.max_join_hops)
+    end_links = build_end_links(links)
+    joins = find_joins(calls, end_links, args.max_join_hops)
     log.info(f"{len(joins)} candidate route(s) between backbone segments")
+
+    # Segments with links on one end only cannot be traversed, so they are tips,
+    # not bridges. Report them as what they are: evidence about chromosome ENDS.
+    backbone_names = {c.name for c in calls if c.cls == "backbone"}
+    # only for the small stuff: a backbone contig with links on one end only is
+    # simply a molecule with a free end, which is what a chromosome end looks
+    # like. It is not a repeat and calling it a tip would be nonsense.
+    tips = dead_end_repeats(
+        end_links, [c.name for c in calls if c.name not in backbone_names]
+    )
+    for tip, live_end in sorted(tips.items()):
+        touching = sorted({n for n, _e in end_links.get((tip, live_end), ())})
+        if touching:
+            log.info(
+                f"{tip}: links on one end only ({len(touching)} neighbour(s): "
+                f"{', '.join(touching)}); a tip, not a bridge, so it caps those ends "
+                f"rather than joining them"
+            )
+
+    # Shared tips. Two backbone segments attached to the SAME END of the same
+    # intermediate cannot both be joined through it - you would have to leave
+    # that intermediate by an end you also arrived at. But this is exactly what a
+    # repeat sitting at the end of two different chromosomes looks like, so each
+    # pairing is offered as a declared, penalised alternative rather than dropped.
+    # The test is per END, not per segment: edge_3 has a link on its far side and
+    # so is not a dead end, yet edge_5 and edge_6 both hang off edge_3.R.
+    seen_pairs: Set[Tuple[str, str, str]] = set()
+    for (mid, mid_end), neighbours in sorted(end_links.items()):
+        if mid in backbone_names:
+            continue
+        at_end = sorted({n for n, _e in neighbours if n in backbone_names})
+        if len(at_end) < 2:
+            continue
+        log.warn(
+            f"{', '.join(at_end)} all attach to the same end of {mid}. The graph does NOT "
+            f"resolve whether any of them join through it, because a route would have to "
+            f"leave {mid} by the end it arrived at. Treat such a join as an untested "
+            f"alternative, not a result."
+        )
+        ends_at_mid = {n: e for n, e in neighbours if n in backbone_names}
+        for i, n1 in enumerate(at_end):
+            for n2 in at_end[i + 1:]:
+                sig = (min(n1, n2), max(n1, n2), mid)
+                if sig in seen_pairs:
+                    continue
+                seen_pairs.add(sig)
+                joins.append(
+                    Join(
+                        a=n1, b=n2, via=[mid],
+                        a_end=ends_at_mid.get(n1, "e"),
+                        b_end=ends_at_mid.get(n2, "s"),
+                        speculative=True,
+                    )
+                )
+
     hypotheses = enumerate_hypotheses(calls, joins, adj, args, log, build_end_adjacency(links))
 
     extra: Dict[str, str] = {}
@@ -5650,9 +6169,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "telomere-capped ends. Supply this only to see how a hypothesis scores "
                         "against a karyotype you already trust.")
     g.add_argument("--min-telomere-motifs", type=int, default=25,
-                   help="motif occurrences before a segment counts as telomeric (default 25)")
+                   help=argparse.SUPPRESS)  # retired: counted chance k-mers, see
+                                            # --min-telomere-units
     g.add_argument("--min-telomere-fraction", type=float, default=0.02,
-                   help="fraction of a segment that must be telomere repeat (default 0.02)")
+                   help=argparse.SUPPRESS)  # retired, as above
     g.add_argument("--telomere-bonus", type=float, default=1.2,
                    help="score added per telomere-capped molecule end (default 1.2)")
     g.add_argument("--open-end-penalty", type=float, default=0.0,
@@ -5687,6 +6207,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--telomere-motif", action="append", default=None, metavar="MOTIF",
                    help="telomere repeat motif to count; repeatable. Defaults to the canonical "
                         "motifs for vertebrates, plants, insects, nematodes and ciliates.")
+    g.add_argument("--telomere-window", type=parse_size, default=20_000,
+                   help="how far in from each end of a segment to look for a telomere repeat "
+                        "array. A telomere that is not at an end is not a telomere "
+                        "(default 20k)")
+    g.add_argument("--min-telomere-units", type=int, default=3,
+                   help="consecutive perfect repeats needed to call a telomere array. Three "
+                        "units is already ~4**-18 by chance; the reported unit count is what "
+                        "tells you how strong a call is (default 3)")
     g.add_argument("--max-period", type=int, default=3000,
                    help="largest tandem repeat unit to screen for (default 3000)")
     g.add_argument("--max-period-scan-length", type=parse_size, default=200_000)
@@ -5698,6 +6226,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--tie-threshold", type=float, default=0.75,
                    help="hypotheses within this score of the best are reported as tied "
                         "(default 0.75)")
+    g.add_argument("--speculative-penalty", type=float, default=1.5,
+                   help="score penalty per join that is not supported by a traversable "
+                        "path, i.e. where two segments merely end in the same one-sided "
+                        "repeat. Such joins are reported, never silently used (default 1.5)")
     g.add_argument("--hypothesis", type=int, default=1,
                    help="which ranked hypothesis to draw as the ideogram (default 1)")
 

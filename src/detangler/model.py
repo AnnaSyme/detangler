@@ -979,7 +979,8 @@ def model_from_hypothesis(
             )
             if nb:
                 rec.caps.setdefault(side, []).extend(
-                    (n, colours.get(n, "#cfcfcf")) for n in nb
+                    (n, colours.get(n, "#cfcfcf"), by_name[n].length if n in by_name else 0)
+                    for n in nb
                 )
         capped, opened, cap_notes = chain_end_status(
             chain, {v for j in hyp.joins for v in j.via}, adj, telomeric, end_adj

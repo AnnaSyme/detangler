@@ -339,8 +339,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Typical run:\n"
-            "  detangler.py --fai asm.fa.fai --gfa asm.gfa --paf segs.paf \\\n"
-            "                --coverage cov.regions.bed.gz --out-dir out --prefix asm\n\n"
+            "  detangler.py --fai assembly.fa.fai --gfa assembly.gfa --paf segs.paf \\\n"
+            "                --coverage cov.regions.bed.gz --out-dir out --prefix assembly\n\n"
             "Then edit out/asm_karyotype.yaml and re-run with --config to lock in your calls."
         ),
     )
@@ -404,11 +404,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="OPTIONAL and not needed. The chromosome count is inferred from "
                         "telomere-capped ends. Supply this only to see how a hypothesis scores "
                         "against a karyotype you already trust.")
-    g.add_argument("--min-telomere-motifs", type=int, default=25,
-                   help=argparse.SUPPRESS)  # retired: counted chance k-mers, see
-                                            # --min-telomere-units
-    g.add_argument("--min-telomere-fraction", type=float, default=0.02,
-                   help=argparse.SUPPRESS)  # retired, as above
     g.add_argument("--telomere-bonus", type=float, default=1.2,
                    help="score added per telomere-capped molecule end (default 1.2)")
     g.add_argument("--open-end-penalty", type=float, default=0.0,

@@ -108,6 +108,18 @@ class Layout:
         return self.x[seqname] + BAR_W / 2.0
 
 
+# The smallest a contig may be drawn, in either panel. Bandage uses the same
+# idea (a minimumNodeLength floor under a length-proportional scale); the point
+# of pinning it here is that the graph panel and the chromosome panel must agree,
+# or a 15 kb telomeric repeat looks like two different sizes in one figure.
+MIN_DRAWN_PX = BAR_W * 0.6
+
+
+def drawn_length_px(length: int, px_per_bp: float) -> float:
+    """A contig's drawn length, identical wherever it is drawn."""
+    return max(float(length) * px_per_bp, MIN_DRAWN_PX)
+
+
 def _bar_path(x: float, y: float, w: float, h: float, rt: float, rb: float) -> str:
     """
     Rectangle with independently rounded top and bottom ends.

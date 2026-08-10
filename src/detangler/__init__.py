@@ -41,21 +41,21 @@ needed if you ask for a similarity search.
 Usage
 -----
   # assembled genome
-  detangler.py --fai asm.fa.fai --gfa asm.gfa --paf segs_to_asm.paf \\
-                --coverage cov.regions.bed.gz --out-dir results --prefix myasm
+  detangler.py --fai assembly.fa.fai --gfa assembly.gfa --paf segs_to_assembly.paf \\
+                --coverage cov.regions.bed.gz --out-dir results --prefix myassembly
 
   # graph only, with expectations to constrain the hypotheses
   detangler.py --gfa assembly_graph.gfa --flye-info assembly_info.txt \\
                 --expected-genome-size 36.5m --expected-chromosomes 4 \\
-                --out-dir results --prefix myasm
+                --out-dir results --prefix myassembly
 
   # identify the repeats it found
   detangler.py --gfa assembly_graph.gfa --blast-subject repeats.fa ...
-  # ...or run the emitted results/myasm_blast_commands.sh on a cluster and
+  # ...or run the emitted results/myassembly_blast_commands.sh on a cluster and
   #    feed the table back with --blast-hits
 
-  # apply your own calls: edit results/myasm_karyotype.yaml, then
-  detangler.py --config results/myasm_karyotype.yaml --out-dir results --prefix myasm
+  # apply your own calls: edit results/myassembly_karyotype.yaml, then
+  detangler.py --config results/myassembly_karyotype.yaml --out-dir results --prefix myassembly
 
   # synthetic data to kick the tyres
   detangler.py --demo demo_data --out-dir results --prefix demo

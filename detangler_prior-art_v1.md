@@ -4,6 +4,18 @@ Assessment 11 Aug 2026, prompted by finding Verkko-Fillet. Everything below was
 read from the tools' own docs or source. Where something could not be verified
 it says so.
 
+## What this document is for
+
+Not to prove detangler is unique. That is unprovable and not worth claiming.
+The point is narrower and more useful: **I went looking for a tool that takes a
+GFA and shows the possible chromosome arrangements, and could not find one.**
+This records where I looked, so that (a) the claim in the README is calibrated
+to actual searching rather than to not having looked, and (b) if a reviewer
+names something, it is easy to check whether it was already considered.
+
+The right register for the paper or README is "we are not aware of a tool that
+does X", with this list as the evidence of having looked - not "no tool does X".
+
 ## Verdict
 
 Verkko-Fillet **dents but does not sink** the position. It does not produce a

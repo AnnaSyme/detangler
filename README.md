@@ -56,6 +56,29 @@ To override any of the tool's calls, edit the emitted
 python detangler.py --config results/myassembly_karyotype.yaml --out-dir results --prefix myassembly
 ```
 
+## Which GFA to use
+
+This matters more than anything else on this page. Most assemblers write several
+graphs, and they are not equally useful here.
+
+**Use the unitig graph, not the contig graph.** For hifiasm that means
+`*.r_utg.gfa` (raw unitigs, keeps everything) or `*.p_utg.gfa` (small bubbles
+popped), not `*.p_ctg.gfa`. Flye's `assembly_graph.gfa` is already the right
+thing.
+
+The reason: a contig graph is the assembler's output *after* it has resolved and
+popped everything it could. The tangles have been cleaned away before you see
+them. Run on a bird `p_ctg.gfa` here and the file had **34 links for 683
+contigs**, so nearly every contig was isolated, there was nothing to join, and
+the tool correctly reported 683 pieces and one hypothesis. That is a true
+description of the assembly and a useless picture. The unitig graph is where the
+ambiguity still lives, and ambiguity is the thing this tool exists to show you.
+
+**The graph must carry sequence.** Verkko's published graphs are named
+`*.noseq.gfa` and contain none, which removes GC and telomere arrays, and
+telomere-capped ends are how the chromosome count is inferred. If your graph has
+no sequence, supply `--fasta` alongside.
+
 ## Required inputs
 
 - `--gfa` the GFA v1 assembly graph (the file Bandage opens). If it carries

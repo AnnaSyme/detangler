@@ -134,3 +134,30 @@ the suite reports 5 molecules while the shipped tool reports 4. It also puts
 edge_9's telomere array at both ends where the real one is at the start only.
 Add a test that runs the real GFA and asserts the score gap between hypotheses 1
 and 2, with and without `--centromere-bonus`.
+
+## Scale test 2: a real vertebrate graph, 11 Aug 2026
+
+`bBaeBic1_hap1_contig_graph.gfa` from GenomeArk (VGP bird, hifiasm hap1). 683
+segments, 1.09 Gb, sequence present, `rd:i:` depth tags. Ran in 50 s with
+`--assembler hifiasm --max-graph-nodes 60`.
+
+Result: **242 molecules, 441 unplaced, one hypothesis, zero joins asserted,
+score 0.00.** Baseline depth 23x read correctly from the hifiasm tags; 65
+telomere arrays found, so the sequence-derived evidence worked.
+
+The reason is the input, not the tool: the file has **34 L-lines for 683
+segments**. A `p_ctg` graph is post-cleanup - the assembler has already resolved
+and popped every tangle it could. There was nothing to detangle.
+
+Two things follow:
+
+1. **Document which GFA to use.** Done, as a new README section: unitig graph
+   (`r_utg` / `p_utg`), not contig graph. This is the single most consequential
+   piece of user guidance in the tool and it was missing.
+2. **The Fusarium graph is unusually good for this tool** - Flye's
+   `assembly_graph.gfa` is a repeat graph, so it keeps the tangles a hifiasm
+   contig graph has already discarded. Worth saying so rather than implying the
+   tool generalises to any file named `.gfa`.
+
+Still untested: a genuinely tangled vertebrate unitig graph. That is the test
+that would actually stress the inference.

@@ -175,7 +175,9 @@ def _gfa_tags(fields: Seq[str]) -> Dict[str, str]:
 _SPADES_COV = re.compile(r"_cov_([0-9.]+)")
 
 
-def parse_gfa(path: str, log: Log) -> Tuple[Dict[str, GfaSegment], List[GfaLink]]:
+def parse_gfa(
+    path: str, log: Log, assembler: str = "unknown"
+) -> Tuple[Dict[str, GfaSegment], List[GfaLink]]:
     """
     GFA v1 (the flavour Bandage reads). S and L lines only; P/W/C lines are
     ignored. Depth is taken from dp/DP if present, else derived from KC/RC
@@ -218,7 +220,7 @@ def parse_gfa(path: str, log: Log) -> Tuple[Dict[str, GfaSegment], List[GfaLink]
                     acgt = len(up) - up.count("N")
                     if acgt > 0:
                         gc = (up.count("G") + up.count("C")) / acgt
-                depth = _segment_depth(name, length, tags)
+                depth = _segment_depth(name, length, tags, assembler)
                 segs[name] = GfaSegment(name=name, length=length, depth=depth, gc=gc)
             elif rec == "L":
                 if len(f) < 5:
@@ -253,7 +255,27 @@ def parse_gfa(path: str, log: Log) -> Tuple[Dict[str, GfaSegment], List[GfaLink]
     return segs, links
 
 
-def _segment_depth(name: str, length: int, tags: Dict[str, str]) -> Optional[float]:
+def _segment_depth(
+    name: str, length: int, tags: Dict[str, str], assembler: str = "unknown"
+) -> Optional[float]:
+    """
+    Read depth off an S line. Assemblers do not agree on how to write it.
+
+    `dp`/`DP` is a depth directly. `KC`/`RC`/`FC` are COUNTS - k-mers, reads,
+    fragments - so they are divided by length; note that RC/length is reads per
+    base, not coverage, and is out by roughly the mean read length. Ratios
+    survive, which is what copy number needs, but the printed "depth" is then
+    not a depth. hifiasm writes `rd`, and its documentation is explicit that
+    `rd:i:n` means coverage n+1, so a segment supported by one read carries
+    rd:i:0 - without the correction those segments look like zero coverage.
+    https://hifiasm.readthedocs.io/en/latest/interpreting-output.html
+    """
+    if "rd" in tags:
+        try:
+            v = float(tags["rd"])
+            return v + 1.0 if assembler == "hifiasm" else v
+        except ValueError:
+            pass
     for key in ("dp", "DP"):
         if key in tags:
             try:

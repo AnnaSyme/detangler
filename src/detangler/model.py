@@ -945,6 +945,25 @@ def model_from_hypothesis(
     model.settings = {"order": args.order, "coverage": False}
     model.segment_colours = colours
 
+    def _pair(a: str, b: str) -> Tuple[str, str]:
+        return (a, b) if a <= b else (b, a)
+
+    overlap_bp: Dict[Tuple[str, str], int] = {}
+    for l in links:
+        m = re.fullmatch(r"(\d+)M", (l.overlap or "").strip())
+        if not m:
+            continue
+        n = int(m.group(1))
+        if n <= 0:
+            continue
+        k = _pair(l.a, l.b)
+        overlap_bp[k] = max(overlap_bp.get(k, 0), n)
+    if overlap_bp:
+        log.info(
+            f"L-line overlaps present ({len(overlap_bp)} link(s), up to "
+            f"{max(overlap_bp.values()):,} bp); subtracting them from chain lengths"
+        )
+
     used_in_chains: Set[str] = set()
     placements: Dict[str, List[Anchor]] = defaultdict(list)
     # For each anchor laid down inside a chain: which member precedes and which
@@ -966,6 +985,16 @@ def model_from_hypothesis(
         blocks: List[Tuple[int, int, str, str]] = []
         for i, seg in enumerate(members):
             L = by_name[seg].length if seg in by_name else 0
+            # Subtract the L-line overlap with the PREVIOUS member. Flye writes
+            # 0M so this is a no-op there, but miniasm, canu and any unitig
+            # graph carry real overlaps, and adding raw segment lengths then
+            # inflates every molecule by the sum of its junctions. Chain length
+            # is the number this tool's credibility rests on - it is what gets
+            # compared against a published chromosome - so it cannot be wrong by
+            # an assembler-dependent constant.
+            if i > 0:
+                L -= overlap_bp.get(_pair(members[i - 1], seg), 0)
+                L = max(L, 0)
             placements[seg].append(Anchor(name, cursor, cursor + L, seg))
             anchor_context[(name, cursor, cursor + L, seg)] = (
                 members[i - 1] if i > 0 else None,

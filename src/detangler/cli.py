@@ -123,7 +123,7 @@ def build_model(args, log: Log) -> Tuple[Model, Dict[str, str]]:
     segs: Dict[str, GfaSegment] = {}
     links: List[GfaLink] = []
     if args.gfa:
-        segs, links = parse_gfa(args.gfa, log)
+        segs, links = parse_gfa(args.gfa, log, args.assembler)
         model.inputs["gfa"] = args.gfa
         log.info(f"graph: {len(segs)} segments, {len(links)} links")
 
@@ -217,7 +217,7 @@ def build_model_graph_first(args, log: Log) -> Tuple[Model, Dict[str, str]]:
     The path taken when there is no chromosome-level assembly: work from the
     graph the assembler emitted, and produce ranked hypotheses.
     """
-    segs, links = parse_gfa(args.gfa, log)
+    segs, links = parse_gfa(args.gfa, log, args.assembler)
     log.info(f"graph: {len(segs)} segments, {len(links)} links")
 
     seq_by_segment = read_segment_sequences(args.gfa, args.segment_fasta, log)
@@ -305,6 +305,7 @@ def build_model_graph_first(args, log: Log) -> Tuple[Model, Dict[str, str]]:
             for c in calls
         ]
         model.title = args.title or "Assembly graph (no backbone segments found)"
+        pick = 1
     else:
         pick = min(max(args.hypothesis, 1), len(hypotheses))
         model = model_from_hypothesis(hypotheses[pick - 1], calls, links, args, log)
@@ -327,6 +328,36 @@ def build_model_graph_first(args, log: Log) -> Tuple[Model, Dict[str, str]]:
         identify_repeats(model, calls, model.tangles, adj, seq_by_segment, base, args, log)
     )
     extra.update(write_figures(model, calls, links, colours, base, args, log))
+
+    # Alternative hypotheses, each as its own figure. The point is honesty about
+    # ambiguity: where the top two score within a whisker of each other, showing
+    # one drawing and calling it the answer is the single easiest way for this
+    # tool to mislead. Drawn from the SAME calls and the SAME colours, so a
+    # contig is the same colour in every figure and the reader is comparing
+    # topologies rather than re-learning the palette each time.
+    n_draw = max(1, min(int(getattr(args, "draw_hypotheses", 1) or 1), 5))
+    if n_draw > 1 and hypotheses:
+        # N is the TOTAL number of figures, so N=3 means the top one plus two
+        # alternatives - not the top one plus three.
+        for rank in range(pick + 1, min(pick + n_draw - 1, len(hypotheses)) + 1):
+            h = hypotheses[rank - 1]
+            alt = model_from_hypothesis(h, calls, links, args, log)
+            alt.chosen_hypothesis = rank
+            alt.segment_calls = calls
+            alt.hypotheses = hypotheses
+            alt.range_slack = args.speculative_penalty
+            alt.baseline_depth = baseline
+            alt.segment_colours = colours
+            alt.expected_chromosomes = getattr(model, "expected_chromosomes", None)
+            alt_base = f"{base}_h{rank}"
+            got = write_figures(alt, calls, links, colours, alt_base, args, log)
+            for k, v in got.items():
+                if "PAIRED" in k:
+                    extra[f"hypothesis {rank} figure (score {h.score:.2f})"] = v
+        log.info(
+            f"drew {min(n_draw, len(hypotheses))} hypotheses; compare them before treating "
+            f"any one as the answer"
+        )
     return model, extra
 
 
@@ -458,6 +489,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--tie-threshold", type=float, default=0.75,
                    help="hypotheses within this score of the best are reported as tied "
                         "(default 0.75)")
+    g.add_argument("--assembler",
+                   choices=["flye", "hifiasm", "verkko", "spades", "miniasm", "canu",
+                            "unknown"],
+                   default="unknown",
+                   help="which assembler wrote the GFA. Assemblers disagree on things the "
+                        "inference depends on: which tag carries depth and what it means "
+                        "(hifiasm's rd:i:n is coverage n+1), and whether L-line CIGARs are 0M "
+                        "or real overlaps that must be subtracted from a chain's length. "
+                        "Overlaps are detected from the file either way; this flag mainly "
+                        "fixes the depth reading and lets the report state what it assumed")
     g.add_argument("--assembly-type", choices=["primary", "phased", "collapsed"],
                    default="primary",
                    help="what the ASSEMBLER produced, which is what decides how depth should "
@@ -491,6 +532,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "could interlock with it, and the panels are now side by side, where "
                         "they cannot collide and the graph should use its whole rectangle")
     g.set_defaults(graph_triangle=False)
+    g.add_argument("--direct-link-bonus", type=float, default=0.55,
+                   help="score for a join made by a DIRECT link between two backbone segments, "
+                        "over and above cancelling --join-cost. A direct link is the least "
+                        "ambiguous evidence a graph carries - the assembler saw these two ends "
+                        "adjoin, with no intermediate to misread - so it should be able to "
+                        "carry a join on its own (default 0.55)")
     g.add_argument("--centromere-bonus", type=float, default=1.2,
                    help="score added when a join runs through a long, markedly AT-rich, "
                         "low-copy segment that bridges exactly two backbone ends. In lineages "
@@ -511,6 +558,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "repeat. Such joins are reported, never silently used (default 1.5)")
     g.add_argument("--hypothesis", type=int, default=1,
                    help="which ranked hypothesis to draw as the ideogram (default 1)")
+    g.add_argument("--draw-hypotheses", type=int, default=1, metavar="N",
+                   help="draw the top N ranked hypotheses instead of only one (default 1, "
+                        "max 5). Extra figures are written as <prefix>_paired_h2.svg and so "
+                        "on, each headed with its rank and score. Worth using whenever the "
+                        "report says the top hypotheses score within --tie-threshold of each "
+                        "other: at that point the graph does not choose between them and one "
+                        "picture on its own overstates the case")
 
     g = p.add_argument_group(
         "repeat identification",

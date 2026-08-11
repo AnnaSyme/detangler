@@ -186,12 +186,26 @@ def _report_graph_sections(model: Model) -> List[str]:
             )
         )
         L.append("")
-        L.append(
-            "No expected karyotype was used to reach that. A finished linear chromosome carries "
-            "a telomere repeat array at each end, so the count follows from how many ends are "
-            "capped; a join between two contigs is only asserted when the segment bridging them "
-            "is present in roughly one copy and touches nothing else."
-        )
+        # This paragraph used to claim unconditionally that no karyotype was
+        # used, while the scorer had already applied a penalty proportional to
+        # the distance from --expected-chromosomes. That is a false statement in
+        # the output, and it is false in the direction that flatters the tool.
+        exp_n = getattr(model, "expected_chromosomes", None)
+        if exp_n:
+            L.append(
+                f"**{exp_n} chromosomes were supplied** via `--expected-chromosomes`, and the "
+                f"ranking used them: every hypothesis was penalised in proportion to how far "
+                f"its molecule count sits from {exp_n}. So this is not an independent estimate "
+                f"of the count - it is the graph's evidence weighted towards a number you "
+                f"provided. Run without the flag to see what the graph says on its own."
+            )
+        else:
+            L.append(
+                "No expected karyotype was used to reach that. A finished linear chromosome "
+                "carries a telomere repeat array at each end, so the count follows from how "
+                "many ends are capped; a join between two contigs is only asserted when the "
+                "segment bridging them is present in roughly one copy and touches nothing else."
+            )
         L.append("")
         L.append(f"- {top.capped_ends} of {2 * len(top.chains)} ends are telomere-capped")
         L.append(f"- {top.open_ends} end(s) are open, so those molecules are unfinished")

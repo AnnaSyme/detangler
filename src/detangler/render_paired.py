@@ -58,6 +58,7 @@ from .render_ideogram import (
 )
 from .render_graph import (
     segment_thickness,
+    prune_for_drawing,
     _graph_layout,
     graph_svg_for_style,
     render_graph_figure,
@@ -200,7 +201,10 @@ def render_paired_svg(
     # Build the chromosome panel FIRST so the graph panel can borrow its scale:
     # a contig should be the same size in both halves of the figure.
     args.graph_px_per_bp = lay.scale
-    graph_svg = graph_svg_for_style(calls, links, "", colours, args, log)
+    # The same drawing filter the standalone graph uses. Without it the
+    # paired figure - the flagship output - had no size guard at all.
+    g_calls, g_links, prune_note = prune_for_drawing(calls, links, args, log)
+    graph_svg = graph_svg_for_style(g_calls, g_links, "", colours, args, log)
     if args.graph_style == "bandage":
         gw, gh = _svg_width(graph_svg), _svg_height(graph_svg)
 
@@ -246,10 +250,25 @@ def render_paired_svg(
     # ghost slots that exist because of a number the reader cannot see, and the
     # figure has to name it.
     expected_n = getattr(model, "expected_chromosomes", None)
-    sub_label = (
-        f"given {expected_n} expected chromosome{'s' if expected_n != 1 else ''}"
-        if expected_n else ""
-    )
+    bits = []
+    # Which of the ranked hypotheses this is, but ONLY when it is not the top
+    # one. On a single-figure run saying "hypothesis 1" is noise; on a
+    # --draw-hypotheses run the rank is the whole reason there are several
+    # pictures, and a figure without it is unattributable.
+    rank = int(getattr(model, "chosen_hypothesis", 1) or 1)
+    if rank > 1:
+        ranked = getattr(model, "hypotheses", None) or []
+        sc = ""
+        if len(ranked) >= rank:
+            sc = f", score {ranked[rank - 1].score:.2f}"
+        bits.append(f"hypothesis {rank} of {len(ranked) or rank}{sc}")
+    if prune_note:
+        bits.append(prune_note)
+    if expected_n:
+        bits.append(
+            f"given {expected_n} expected chromosome{'s' if expected_n != 1 else ''}"
+        )
+    sub_label = "  \u00b7  ".join(bits)
     top = FS_HEADING * 1.5 + 34.0 + (FS_PRIMARY + 12.0 if sub_label else 0.0)
     gap = PAIR_GUTTER * 0.35
 

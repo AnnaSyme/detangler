@@ -1490,6 +1490,54 @@ def render_graph_svg(
     return "\n".join(P)
 
 
+def prune_for_drawing(calls, links, args, log: Log):
+    """
+    Keep the graph drawable by DROPPING segments, not by refusing to draw.
+
+    A human or plant assembly graph has thousands of segments; the old rule
+    printed "too many, figure skipped", which is the least useful thing it could
+    do - the whole reason to look at a picture of a 5,000-segment graph is to
+    find the handful of pieces that matter.
+
+    What is kept is the longest `--max-graph-nodes` segments, because length is
+    what chromosome structure is made of, plus any segment linked to one of
+    those so a kept contig never appears to float free. What is dropped is
+    reported by count and by span, so the reader knows the picture is partial
+    and by how much. Nothing here touches the INFERENCE - classification and
+    hypotheses have already run over the whole graph. This is a drawing filter.
+    """
+    limit = int(getattr(args, "max_graph_nodes", 300) or 300)
+    if len(calls) <= limit:
+        return calls, links, None
+    ranked = sorted(calls, key=lambda c: -c.length)
+    keep = {c.name for c in ranked[:limit]}
+    # ...and anything directly attached to a kept segment, so no kept contig is
+    # drawn with a link going nowhere.
+    for l in links:
+        if l.a in keep or l.b in keep:
+            keep.add(l.a)
+            keep.add(l.b)
+    kept = [c for c in calls if c.name in keep]
+    if len(kept) > limit * 2:      # attachment closure ran away; fall back
+        kept = ranked[:limit]
+        keep = {c.name for c in kept}
+    dropped = [c for c in calls if c.name not in keep]
+    span = sum(c.length for c in dropped)
+    total = sum(c.length for c in calls) or 1
+    note = (
+        f"{len(dropped):,} of {len(calls):,} segments omitted from the figure "
+        f"({human_bp(span)}, {100.0 * span / total:.1f}% of the assembly); "
+        f"the {len(kept):,} longest are drawn"
+    )
+    log.warn(
+        note + f". Raise --max-graph-nodes to draw more. Classification and the "
+        f"chromosome hypotheses used ALL {len(calls):,} segments; only the picture is partial."
+    )
+    kept_names = {c.name for c in kept}
+    kept_links = [l for l in links if l.a in kept_names and l.b in kept_names]
+    return kept, kept_links, note
+
+
 def render_graph_figure(
     calls: List[SegmentCall],
     links: List[GfaLink],
@@ -1500,13 +1548,7 @@ def render_graph_figure(
     log: Log,
 ) -> Optional[str]:
     """The Bandage graph redrawn with our own, fixed colours."""
-    if len(calls) > args.max_graph_nodes:
-        log.warn(
-            f"the graph has {len(calls)} segments, more than --max-graph-nodes "
-            f"({args.max_graph_nodes}), so the graph figure was skipped. It would be unreadable "
-            f"at that size; raise the limit if you want it anyway."
-        )
-        return None
+    calls, links, _note = prune_for_drawing(calls, links, args, log)
     with open(path, "w") as fh:
         fh.write(graph_svg_for_style(calls, links, title, colours, args, log))
     return path

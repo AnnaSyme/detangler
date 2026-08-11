@@ -151,9 +151,13 @@ earns `--centromere-bonus` (1.2), and a join through it pays only
 reasoning: an assembler is EXPECTED to fail to read through an AT-rich
 centromere, so the missing through-path is explained rather than damning.
 
-Validated on the *Fusarium graminearum* test GFA, where it lifts the correct
-4-chromosome answer to rank 1 with no `--expected-chromosomes` supplied. It
-stays silent on the demo data. It is a hypothesis-raiser, not a diagnosis, and
+**Not validated - tuned.** On the *Fusarium graminearum* test GFA it lifts the
+4-chromosome answer to rank 1 with no `--expected-chromosomes` supplied, but the
+two constants were chosen to make that happen: set either to its neutral value
+and the answer reverts to 5. One free parameter fitted to one known answer is
+not validation, and calling it that here was wrong. The rule stays silent on the
+demo data, which is the only thing about it that has been tested independently.
+See `detangler_review-actions_v1.md`. It is a hypothesis-raiser, not a diagnosis, and
 the report says so in those words.
 
 **Still open:** a join's bridging segment is not DRAWN inside the chromosome

@@ -359,9 +359,24 @@ def enumerate_hypotheses(
                     ]
                 else:
                     score -= args.speculative_penalty
+                    # Say WHICH failure this is. The text used to assert "links
+                    # on one side only" for every case, but a segment can have
+                    # links on both ends and still be untraversable when both
+                    # partners attach to the SAME end - which is the commoner
+                    # situation and a different fact about the graph.
+                    mid_ = j.via[0] if j.via else ""
+                    both_ends = bool(end_adj) and all(
+                        any(k[0] == mid_ and k[1] == e for k in end_adj)
+                        for e in ("s", "e")
+                    )
+                    why = (
+                        f"{mid_} has links on both ends, but {j.a} and {j.b} attach to the "
+                        f"SAME one, and a path cannot leave by the end it arrived at"
+                        if both_ends else
+                        f"both segments simply end in {mid_}, which has links on one side only"
+                    )
                     con = list(con) + [
-                        f"the join {j.a} - {j.b} is NOT supported by a traversable path: both "
-                        f"segments simply end in {j.via[0]}, which has links on one side only. "
+                        f"the join {j.a} - {j.b} is NOT supported by a traversable path: {why}. "
                         f"Resolving it needs evidence from outside this graph."
                     ]
                 res = list(res) + [
@@ -544,7 +559,15 @@ def _score_hypothesis(
         score -= args.join_cost
         score -= 0.25 * max(0, len(j.via) - 1)
         if not j.via:
-            score += 0.3  # a direct link needs no intermediate to be believed
+            # A DIRECT link is the strongest thing an assembly graph can tell
+            # you: the assembler saw evidence that these two ends adjoin, with
+            # nothing in between to be ambiguous about. It used to refund only
+            # 0.3 against a join cost of 0.6, so a direct link scored net -0.3
+            # and could never carry a join on its own - a plain chain of contigs
+            # joined by unambiguous links came out as separate molecules, while
+            # a speculative one-sided bridge scored +1.3. That inversion put the
+            # tool's confidence in exactly the wrong place.
+            score += args.join_cost + args.direct_link_bonus
         detail = []
         ambiguous = False
         for v in j.via:

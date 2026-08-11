@@ -2,35 +2,35 @@
 
 Turn a genome assembly graph into a chromosome hypothesis.
 
-detangler reads a genome assembly graph (GFA), classifies every segment, and
-proposes ranked hypotheses of how the contigs resolve into linear chromosomes.
-The graph on its own is enough: length, depth-derived copy number, links,
-circularity, GC and telomere motif arrays all come out of the GFA. Outside
-evidence is optional and folded in when given — read coverage, Flye's
-`assembly_info.txt`, alignments, annotation, BLAST hits — as is
-`--assembly-type`, which tells the tool what the assembler produced so it can
-read depth correctly. It draws the result as a
-paired figure: the assembly graph on the left, the inferred chromosomes on the
-right, one colour per segment in both panels. No expected karyotype is
-needed — the chromosome count is inferred from the structure of the graph.
+detangler reads a GFA assembly graph, classifies every segment, and proposes
+ranked hypotheses of how the contigs resolve into linear chromosomes. The graph
+alone is enough: length, depth-derived copy number, links, circularity, GC and
+telomere motif arrays all come from the GFA. Other evidence is optional and is
+used when supplied: read coverage, Flye's `assembly_info.txt`, alignments,
+annotation, BLAST hits, and `--assembly-type`, which says what the assembler
+produced so depth can be read correctly.
+
+Output is a paired figure with the assembly graph on the left and the inferred
+chromosomes on the right, one colour per segment in both panels. No expected
+karyotype is needed; the chromosome count comes from the structure of the graph.
 
 ## What it looks like
 
-Real output, on a Flye assembly of *Fusarium graminearum* (ONT, ~22x). Eleven
-graph segments on the left; on the right, the molecules they resolve into,
-smallest to largest, each with the repeats the graph attaches to its ends. A
-segment keeps the same colour in both panels.
+Output on a Flye assembly of *Fusarium graminearum* (ONT, ~22x). Eleven graph
+segments on the left; on the right, the molecules they resolve into, smallest to
+largest, each with the repeats the graph attaches to its ends. A segment keeps
+the same colour in both panels.
 
 ![Paired figure: assembly graph resolved into a chromosome
 hypothesis](detangler_figure_v3.svg)
 
-A demo on a modest assembly, not a benchmark. What the tool infers depends on
-how well the graph is resolved in the first place.
+This is a demo on a modest assembly, not a benchmark. What the tool infers
+depends on how well the graph is resolved to begin with.
 
 ## How to run
 
-The simplest run needs only the assembly graph (if the GFA carries
-sequence, nothing else is required):
+The simplest run needs only the assembly graph. If the GFA carries sequence,
+nothing else is required:
 
 ```
 python detangler.py --gfa assembly_graph.gfa --out-dir results --prefix myassembly
@@ -59,65 +59,63 @@ python detangler.py --config results/myassembly_karyotype.yaml --out-dir results
 ## Required inputs
 
 - `--gfa` the GFA v1 assembly graph (the file Bandage opens). If it carries
-  sequence — Flye's does — this is the only input needed.
+  sequence, as Flye's does, this is the only input needed.
 
 If the GFA lacks sequence, add one sequence source:
 
-- `--fasta` assembly FASTA (also yields GC and N content), or
+- `--fasta` assembly FASTA (also gives GC and N content), or
 - `--fai` samtools faidx index, or
 - `--assembly-report` NCBI assembly report
 
 ## Optional flags (the useful ones)
 
-- `--flye-info assembly_info.txt` — adds Flye graph-path evidence
-- `--coverage`, `--annotation`, `--paf`, `--agp` — extra evidence tracks
-- `--telomere-motif MOTIF` — add a telomere motif beyond the built-in set
+- `--flye-info assembly_info.txt` adds Flye graph-path evidence
+- `--coverage`, `--annotation`, `--paf`, `--agp` are extra evidence tracks
+- `--telomere-motif MOTIF` adds a telomere motif beyond the built-in set
   (vertebrates, land plants, insects, nematodes, ciliates, fungi)
-- `--expected-chromosomes N`, `--expected-genome-size N` — optional
-  cross-checks only; never required
-- `--hypothesis N` — draw a specific ranked hypothesis instead of the top one
-- `--draw-hypotheses N` — draw the top N (max 5) as separate figures, so an
-  ambiguous result is not shown as a single answer
-- `--assembler flye|hifiasm|verkko|spades|miniasm|canu` — what wrote the GFA.
-  Fixes the depth reading (hifiasm's `rd:i:n` is coverage n+1) and is stated in
-  the report; overlaps are detected from the file regardless
-- `--max-graph-nodes N` — prune the drawing to the N longest segments when the
-  graph is bigger than that, and say what was dropped. Inference always uses
-  every segment; only the picture is partial
-- `--graph-style {bandage,layered}` — graph panel layout (default bandage)
-- `--bandage-image FILE` — embed a real Bandage export as the left panel
-- `--blast-db` / `--blast-subject` / `--blast-remote` — run BLAST on exported
-  candidate segments and fold hits back in with `--blast-hits`
-- `--out-dir`, `--prefix`, `--title` — output naming
-- `--demo DIR` — generate demo data and run on it
+- `--expected-chromosomes N`, `--expected-genome-size N` are cross-checks, never
+  required
+- `--hypothesis N` draws a specific ranked hypothesis instead of the top one
+- `--draw-hypotheses N` draws the top N (max 5) as separate figures, so an
+  ambiguous result is not presented as a single answer
+- `--assembler flye|hifiasm|verkko|spades|miniasm|canu` says what wrote the GFA.
+  This fixes the depth reading, since hifiasm's `rd:i:n` means coverage n+1, and
+  is stated in the report. Link overlaps are detected from the file either way
+- `--max-graph-nodes N` prunes the drawing to the N longest segments when the
+  graph is larger than that, and reports what was dropped. Classification and
+  the hypotheses always use every segment; only the picture is partial
+- `--graph-style {bandage,layered}` sets the graph panel layout (default bandage)
+- `--bandage-image FILE` embeds a real Bandage export as the left panel
+- `--blast-db` / `--blast-subject` / `--blast-remote` run BLAST on exported
+  candidate segments; fold hits back in with `--blast-hits`
+- `--out-dir`, `--prefix`, `--title` control output naming
+- `--demo DIR` generates demo data and runs on it
 
-Run `--help` for the full list, including all classification thresholds.
+Run `--help` for the full list, including every classification threshold.
 
 ## What this is not built for
 
-Small graphs. Fungal, bacterial, organellar, or a plant chromosome set that is
-already well resolved — tens of segments, not thousands.
+Large graphs. This is written for tens of segments, not thousands: fungal,
+bacterial, organellar, or a plant chromosome set that is already well resolved.
 
-Tested on a synthetic graph with human-like scale and structure (311 segments,
-3.0 Gb — not a real human assembly) the tool completes in under two minutes and
-draws a figure, but the figure is not usable and the answer is not
-either: with no sequence in the GFA there is no telomere evidence, so nothing
-caps anything, no joins are asserted, and every backbone contig becomes its own
-molecule — 109 of them from 23 chromosomes. The ten-colour palette cycles, so
-colour stops tying the two panels together, which is the figure's whole premise.
-`--max-graph-nodes` will prune the drawing to keep it tractable and says what it
-dropped, but pruning the picture does not make the inference meaningful.
+On a synthetic graph with human-like scale (311 segments, 3.0 Gb, not a real
+human assembly) the tool finishes in under two minutes and produces a figure,
+but neither the figure nor the answer is much use. With no sequence in the GFA
+there is no telomere evidence, so nothing caps anything, no joins are asserted,
+and every backbone contig becomes its own molecule: 109 of them where there
+should be 23. The ten-colour palette also starts repeating, so colour no longer
+links the two panels. `--max-graph-nodes` will prune the drawing to keep it
+readable, but that does not make the inference any better.
 
-A vertebrate assembly graph needs a different figure — per component, one
-chromosome at a time — and that is not what this draws.
+A vertebrate assembly graph wants a different figure, probably one component at
+a time. That is not what this draws.
 
 ## Checking against a karyotype you already believe
 
-If you know — or suspect — how many chromosomes there should be, pass
-`--expected-chromosomes N`. The figure then shows the shortfall rather than
-leaving you to count bars: every chromosome the graph did not produce gets a
-dashed empty slot labelled *not found*, and a subheading names the number the
-figure was given.
+If you know or suspect how many chromosomes there should be, pass
+`--expected-chromosomes N`. Every chromosome the graph did not produce then gets
+a dashed empty slot labelled *not found*, and a subheading names the number that
+was supplied.
 
 ```
 python detangler.py --gfa assembly_graph.gfa --expected-chromosomes 6 \
@@ -127,25 +125,23 @@ python detangler.py --gfa assembly_graph.gfa --expected-chromosomes 6 \
 ![The same assembly, told to expect six
 chromosomes](detangler_figure_v3_expected6.svg)
 
-Two things are worth understanding before you read this as a verdict.
+Two caveats.
 
-**The flag is not a neutral overlay — it changes the answer.** Compare the two
-figures above. Left to itself the tool asserts a join through the AT-rich
-segment 8 and reports four chromosomes, with chr 1 built from contigs 2 + 8 + 7.
-Told to expect six, it reports five separate molecules: leaving contigs apart
-now scores better than joining them, so segment 8 falls back to being a cap on
-the end of chr 5 rather than a centromere inside chr 1. Expecting more
-chromosomes makes the tool more conservative about merging, which is the
-intended behaviour but does mean you cannot use the flag to check a count
-without also perturbing the inference that produced it.
+The flag is not a neutral overlay; it changes the answer. Compare the two
+figures. Left alone, the tool asserts a join through the AT-rich segment 8 and
+reports four chromosomes, with chr 1 built from contigs 2 + 8 + 7. Told to
+expect six, it reports five separate molecules, because leaving contigs apart
+now scores better than joining them, and segment 8 reverts to a cap on the end
+of chr 5. Expecting more chromosomes makes the tool more conservative about
+merging. That is the intended behaviour, but it does mean you cannot use the
+flag to check a count without also perturbing the inference behind it.
 
-**An empty slot means "the graph did not produce this", not "this is missing
-from the genome".** The commonest reason a chromosome fails to appear is that
-the assembler left it in pieces the graph gives no way to join — the tool says
-so in the report — not that any sequence is absent.
+An empty slot means the graph did not produce that molecule, not that sequence
+is missing from the genome. Usually the assembler left the chromosome in pieces
+the graph gives no way to join, and the report says so.
 
-Nothing about the count is required. Without the flag the chromosome count is
-inferred from the graph alone, which is the mode the tool is built around.
+None of this is required. Without the flag the chromosome count comes from the
+graph alone.
 
 ## Outputs
 
@@ -164,67 +160,29 @@ Written to `--out-dir` with `--prefix`:
 
 ## Code structure
 
-The tool is one Python package, `src/detangler/`, in **layers**. Each module
-imports only from modules above it, never below — so you can read it top to
-bottom and never have to hold two things in your head at once. `detangler.py` at
-the repository root is a two-line launcher that puts `src/` on the path.
+The tool is one folder of Python files, `src/detangler/`, arranged in layers.
+Each file only uses the files above it, so it can be read from the top down.
+`detangler.py` in the main folder is a two-line launcher.
 
-```
-        THE PIPELINE                          THE MODULES
+![How the code is arranged](detangler_code-structure_v1.svg)
 
-  a GFA file on disk
-          |
-          v
-   read the file            ......  parsers.py     GFA, FASTA, .fai, PAF, AGP,
-          |                                        coverage, Flye assembly_info
-          v
-   work out the shape       ......  graph.py       which end links to which end;
-   of the graph                                    dead ends, one-sided tips
-          |
-          v
-   look at the sequence     ......  sequence.py    GC, telomere arrays, repeat
-                                                   period, organelle hints
-          |
-          v
-   decide what each         ......  calls.py       backbone / repeat / haplotig /
-   segment IS                                      organelle / tandem array / ...
-          |
-          v
-   propose ways the         ......  hypotheses.py  legal joins, then every valid
-   pieces could join                               chaining of them, scored
-          |
-          v
-   build one answer         ......  model.py       molecules, their blocks and
-   to draw                                         caps, contradiction checks
-          |
-          v
-   draw it                  ......  render_*.py    graph panel, chromosome panel,
-          |                                        the two side by side
-          v
-   explain it in words      ......  report.py      the evidence and the ranked
-                                                   hypotheses, in prose
-```
+In order: it opens the file, works out the shape of the graph, reads the DNA for
+telomeres and base composition, decides what each contig is, finds every way
+they could join and scores them, builds the best-scoring one into chromosomes,
+draws it, and writes it up.
 
-Supporting modules, used from several places:
+Two files hold nearly all the biology:
 
-| module | what it holds |
-|---|---|
-| `common.py` | constants, the log, small helpers (`human_bp`, `esc`) |
-| `records.py` | the data classes — `GfaLink`, `SeqRecord`, `Anchor` |
-| `palette.py` | segment colours, class names and labels |
-| `render_common.py` | shared geometry: bar widths, type sizes, `Layout` |
-| `blast.py` | exports candidate sequences and writes ready-to-run BLAST commands |
-| `demo.py` | generates synthetic input so the tool can be tried with no data |
-| `cli.py` | the flags, and the order the above are called in |
+- `calls.py` decides what each contig is: chromosome arm, repeat, mitochondrion,
+  leftover haplotype, and so on. Every cut-off the tool relies on is here.
+- `hypotheses.py` finds how those contigs might join, and scores each way of
+  joining them.
 
-Reading order if you want to understand the science rather than the drawing:
-**`calls.py`** (what each segment is) then **`hypotheses.py`** (how they might
-join). Those two hold every threshold the tool relies on, and each rule carries
-a comment saying what it assumes and where it would break. The rendering
-modules are much larger but contain no inference.
+Rules in both files carry a comment saying what they assume and where they would
+break. The drawing files are larger but decide nothing.
 
-Tests are in `GenomeViz_worked-example-test_v1.py` at the repository root — a
-single script, no framework, run it with `python3`.
+Tests are one script, `GenomeViz_worked-example-test_v1.py`, in the main folder.
+Run it with `python3`; no test framework needed.
 
 ## Credits
 
@@ -232,15 +190,15 @@ The assembly graph panel follows the approach used by
 [Bandage](https://github.com/rrwick/Bandage) (Wick et al. 2015): each contig is
 laid out as a chain of many small nodes rather than as a single rigid edge, so
 that a contig's drawn length tracks its sequence length and long contigs can
-curve around their neighbours. Bandage's edge construction is followed too —
-each control point one contig-width beyond the end, along that contig's own
+curve around their neighbours. Bandage's edge construction is followed too, with
+each control point one contig-width beyond the end along that contig's own
 tangent, so a junction is continuous with the ribbons it joins. Both ideas are
 reimplemented here in Python; no Bandage code is used, and detangler is not
 derived from it.
 
 Also drawn on for the graph layout:
 
-- Initial placement comes from [Graphviz](https://graphviz.org) `sfdp` — Yifan
+- Initial placement comes from [Graphviz](https://graphviz.org) `sfdp`, Yifan
   Hu's multilevel force-directed algorithm
   ([paper](http://yifanhu.net/PUB/graph_draw_small.pdf)). Optional; there is a
   fallback.

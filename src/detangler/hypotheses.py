@@ -9,7 +9,7 @@ import math
 import os
 import re
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from statistics import median
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Iterable, List, Optional, Sequence as Seq, Set, Tuple
@@ -73,7 +73,7 @@ def chain_end_status(
     adj: Dict[str, Set[str]],
     telomeric: Dict[str, int],
     end_adj: Optional[Dict[Tuple[str, str], Set[str]]] = None,
-) -> Tuple[int, int, List[str]]:
+) -> Tuple[int, int, List[str], List[str]]:
     """
     How many of a chain's two ends look finished.
 
@@ -82,10 +82,17 @@ def chain_end_status(
     the middle of a chain is not capping anything. When end_adj is given, the
     two physical ends of each terminal segment are assessed independently, so
     a segment that abuts the same telomeric segment at BOTH its ends is
-    credited with two capped ends, not one. Returns (capped, open, notes).
+    credited with two capped ends, not one.
+
+    Returns (capped, open, notes, cappers), where `cappers` names the telomeric
+    segment credited with each capped end - one entry per capped end, so a
+    segment credited twice appears twice. The caller needs that to check the
+    credit against the segment's copy number: one segment present in ~2 copies
+    cannot honestly cap five chromosome ends.
     """
     members = set(chain)
     notes: List[str] = []
+    cappers: List[str] = []
 
     def telo_at(seg: str, side: str) -> List[str]:
         ext = {
@@ -103,6 +110,9 @@ def chain_end_status(
             # sitting at both ends caps both of them.
             per_side = [telo_at(seg, side) for side in ("s", "e")]
             capped = sum(1 for t in per_side if t)
+            for t in per_side:
+                if t:
+                    cappers.append(t[0])
             if capped == 2 and per_side[0] == per_side[1]:
                 notes.append(
                     f"{seg} abuts the telomeric segment {', '.join(per_side[0])} at both ends"
@@ -111,14 +121,15 @@ def chain_end_status(
                 for t in per_side:
                     if t:
                         notes.append(f"{seg} abuts the telomeric segment {', '.join(t)}")
-            return capped, 2 - capped, notes
+            return capped, 2 - capped, notes, cappers
         # No orientation information: bounded by distinct telomeric neighbours.
         ext = {n for n in adj.get(seg, ()) if n not in internal and n not in members}
         telo = sorted(n for n in ext if n in telomeric)
         capped = min(len(telo), 2)
+        cappers.extend(telo[:2])
         if telo:
             notes.append(f"{seg} abuts the telomeric segment {', '.join(telo)}")
-        return capped, 2 - capped, notes
+        return capped, 2 - capped, notes, cappers
 
     capped = 0
     for end, inner in ((chain[0], chain[1]), (chain[-1], chain[-2])):
@@ -136,6 +147,7 @@ def chain_end_status(
                 telo = telo_at(end, outer)
                 if telo:
                     capped += 1
+                    cappers.append(telo[0])
                     notes.append(f"{end} abuts the telomeric segment {telo[0]}")
                 continue
             # Both or neither end faces inward, so the orientation cannot be
@@ -144,8 +156,9 @@ def chain_end_status(
         telo = sorted(n for n in ext if n in telomeric)
         if telo:
             capped += 1
+            cappers.append(telo[0])
             notes.append(f"{end} abuts the telomeric segment {telo[0]}")
-    return capped, 2 - capped, notes
+    return capped, 2 - capped, notes, cappers
 
 
 @dataclass
@@ -491,16 +504,46 @@ def _score_hypothesis(
     internal = {v for j in chosen for v in j.via}
     capped_total = open_total = 0
     cap_notes: List[str] = []
+    cappers: List[str] = []
     for chain in chains:
-        capped, opened, notes = chain_end_status(chain, internal, adj, telomeric, end_adj)
+        capped, opened, notes, caps = chain_end_status(
+            chain, internal, adj, telomeric, end_adj
+        )
         capped_total += capped
         open_total += opened
         cap_notes.extend(notes)
+        cappers.extend(caps)
+
+    # A telomeric segment cannot cap more ends than it has copies.
+    #
+    # On the test graph one 15.8 kb segment at copy number 1.95 was being
+    # credited with capping FOUR molecule ends - most of the winning
+    # hypothesis's whole score. Five backbone ends attach to its single 'e'
+    # end; if all five were real you would expect roughly five times baseline
+    # depth, and the observed depth is under twice. The placement check in
+    # model.py already notices this and prints a warning; the scorer never
+    # looked, so the contradiction cost nothing. Now the credit is capped at
+    # the segment's rounded copy number and the shortfall is stated.
+    used = Counter(cappers)
+    credited_total = 0
+    for seg, n_used in used.items():
+        k = cn.get(seg)
+        allowed = n_used if k is None else max(1, int(k + 0.5))
+        credited_total += min(n_used, allowed)
+        if n_used > allowed:
+            con.append(
+                f"{seg} is drawn capping {n_used} molecule ends but is present in about "
+                f"{k:.2f} copies, so at most {allowed} of those caps can be real; the "
+                f"other {n_used - allowed} are counted as open. Which ends are genuinely "
+                f"telomeric cannot be decided from this graph."
+            )
+    capped_scored = min(credited_total, capped_total)
+    open_scored = open_total + (capped_total - capped_scored)
     # Capped ends are rewarded. Open ends are NOT penalised: an open end means
     # the molecule is unfinished, which is not evidence for any particular join.
     # Penalising them would make the tool invent joins to tidy the picture, and
     # it would always prefer merging everything into one chromosome.
-    score += args.telomere_bonus * capped_total - args.open_end_penalty * open_total
+    score += args.telomere_bonus * capped_scored - args.open_end_penalty * open_scored
 
     if telomeric:
         complete = sum(

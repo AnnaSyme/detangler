@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="820" viewBox="0 0 1180 820"
+     font-family="Helvetica, Arial, sans-serif">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <text x="40" y="46" font-size="27" font-weight="700" fill="#1a1a1a">detangler — how the code is arranged</text>
+  <text x="40" y="74" font-size="15" fill="#6b6b6b">Each file only uses the files above it, so you can read it top to bottom.</text>
+
+  <!-- ============ pipeline spine ============ -->
+  <g>
+    <!-- input -->
+    <rect x="40" y="110" width="250" height="52" rx="9" fill="#ffffff" stroke="#9a9a9a"
+          stroke-width="2" stroke-dasharray="6 5"/>
+    <text x="165" y="142" font-size="17" text-anchor="middle" fill="#3a3a3a">a GFA file on disk</text>
+
+    <!-- stage boxes -->
+    <g>
+      <rect x="40" y="192" width="250" height="60" rx="9" fill="#a6cee3"/>
+      <text x="165" y="219" font-size="17" font-weight="700" text-anchor="middle" fill="#1a1a1a">read the file</text>
+      <text x="165" y="240" font-size="14" text-anchor="middle" fill="#1a1a1a">parsers.py</text>
+    </g>
+    <g>
+      <rect x="40" y="272" width="250" height="60" rx="9" fill="#1f78b4"/>
+      <text x="165" y="299" font-size="17" font-weight="700" text-anchor="middle" fill="#ffffff">shape of the graph</text>
+      <text x="165" y="320" font-size="14" text-anchor="middle" fill="#ffffff">graph.py</text>
+    </g>
+    <g>
+      <rect x="40" y="352" width="250" height="60" rx="9" fill="#b2df8a"/>
+      <text x="165" y="379" font-size="17" font-weight="700" text-anchor="middle" fill="#1a1a1a">look at the sequence</text>
+      <text x="165" y="400" font-size="14" text-anchor="middle" fill="#1a1a1a">sequence.py</text>
+    </g>
+    <g>
+      <rect x="40" y="432" width="250" height="60" rx="9" fill="#33a02c"/>
+      <text x="165" y="459" font-size="17" font-weight="700" text-anchor="middle" fill="#ffffff">what each segment IS</text>
+      <text x="165" y="480" font-size="14" text-anchor="middle" fill="#ffffff">calls.py</text>
+    </g>
+    <g>
+      <rect x="40" y="512" width="250" height="60" rx="9" fill="#e31a1c"/>
+      <text x="165" y="539" font-size="17" font-weight="700" text-anchor="middle" fill="#ffffff">how they might join</text>
+      <text x="165" y="560" font-size="14" text-anchor="middle" fill="#ffffff">hypotheses.py</text>
+    </g>
+    <g>
+      <rect x="40" y="592" width="250" height="60" rx="9" fill="#fdbf6f"/>
+      <text x="165" y="619" font-size="17" font-weight="700" text-anchor="middle" fill="#1a1a1a">build one answer</text>
+      <text x="165" y="640" font-size="14" text-anchor="middle" fill="#1a1a1a">model.py</text>
+    </g>
+    <g>
+      <rect x="40" y="672" width="250" height="60" rx="9" fill="#ff7f00"/>
+      <text x="165" y="699" font-size="17" font-weight="700" text-anchor="middle" fill="#ffffff">draw it</text>
+      <text x="165" y="720" font-size="14" text-anchor="middle" fill="#ffffff">render_*.py</text>
+    </g>
+    <g>
+      <rect x="40" y="752" width="250" height="52" rx="9" fill="#cab2d6"/>
+      <text x="165" y="775" font-size="17" font-weight="700" text-anchor="middle" fill="#1a1a1a">explain it in words</text>
+      <text x="165" y="795" font-size="14" text-anchor="middle" fill="#1a1a1a">report.py</text>
+    </g>
+
+    <!-- arrows down the spine -->
+    <g stroke="#4a4a4a" stroke-width="2.4" fill="none" marker-end="url(#arrow)">
+      <path d="M165 162 L165 190"/>
+      <path d="M165 252 L165 270"/>
+      <path d="M165 332 L165 350"/>
+      <path d="M165 412 L165 430"/>
+      <path d="M165 492 L165 510"/>
+      <path d="M165 572 L165 590"/>
+      <path d="M165 652 L165 670"/>
+      <path d="M165 732 L165 750"/>
+    </g>
+  </g>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a4a4a"/>
+    </marker>
+  </defs>
+
+  <!-- ============ what each stage does ============ -->
+  <g font-size="15" fill="#3a3a3a">
+    <text x="320" y="217">opens the assembly graph, and any extra evidence you gave it</text>
+    <text x="320" y="238" font-size="13.5" fill="#8a8a8a">assemblers write read depth differently, so it has to know which one</text>
+
+    <text x="320" y="297">works out which contig end is joined to which other contig end</text>
+    <text x="320" y="318" font-size="13.5" fill="#8a8a8a">you go in one end of a contig and must come out the other</text>
+
+    <text x="320" y="377">reads the DNA itself: base composition, telomere repeats, satellites</text>
+    <text x="320" y="398" font-size="13.5" fill="#8a8a8a">a telomere only counts if it sits at an end and repeats perfectly</text>
+
+    <text x="320" y="457">decides what each contig is: chromosome arm, repeat, mitochondrion…</text>
+    <text x="320" y="478" font-size="13.5" fill="#8a8a8a">all the cut-offs the tool relies on are here</text>
+
+    <text x="320" y="537">finds every join the graph permits and scores each way of chaining them</text>
+    <text x="320" y="558" font-size="13.5" fill="#8a8a8a">gives a ranked list of possibilities, not a single answer</text>
+
+    <text x="320" y="617">turns the best-scoring option into chromosomes, and checks it for</text>
+    <text x="320" y="638" font-size="13.5" fill="#8a8a8a">contradictions - is a contig drawn in more places than its depth allows?</text>
+
+    <text x="320" y="697">makes the picture: the graph, the chromosomes, and the two together</text>
+    <text x="320" y="718" font-size="13.5" fill="#8a8a8a">these files only draw - they decide nothing</text>
+
+    <text x="320" y="777">writes out the evidence and the ranked possibilities, in plain sentences</text>
+  </g>
+
+  <!-- ============ supporting modules ============ -->
+  <g>
+    <rect x="860" y="110" width="285" height="330" rx="12" fill="#f4f4f4" stroke="#d0d0d0" stroke-width="1.5"/>
+    <text x="880" y="140" font-size="16" font-weight="700" fill="#1a1a1a">shared bits, used all over</text>
+
+    <g font-size="14.5" fill="#3a3a3a">
+      <text x="880" y="175" font-weight="700">common.py</text>
+      <text x="880" y="194" font-size="13" fill="#6b6b6b">settings and small shared helpers</text>
+
+      <text x="880" y="224" font-weight="700">records.py</text>
+      <text x="880" y="243" font-size="13" fill="#6b6b6b">the shapes the data is held in</text>
+
+      <text x="880" y="273" font-weight="700">palette.py</text>
+      <text x="880" y="292" font-size="13" fill="#6b6b6b">the colours, and the names of each category</text>
+
+      <text x="880" y="322" font-weight="700">render_common.py</text>
+      <text x="880" y="341" font-size="13" fill="#6b6b6b">sizes and spacing shared by both pictures</text>
+
+      <text x="880" y="371" font-weight="700">blast.py</text>
+      <text x="880" y="390" font-size="13" fill="#6b6b6b">writes ready-to-run BLAST commands for you</text>
+
+      <text x="880" y="420" font-weight="700">demo.py</text>
+      <text x="880" y="439" font-size="13" fill="#6b6b6b">makes fake data so you can try it with none</text>
+    </g>
+
+    <rect x="860" y="470" width="285" height="96" rx="12" fill="#6a3d9a"/>
+    <text x="880" y="500" font-size="16" font-weight="700" fill="#ffffff">cli.py</text>
+    <text x="880" y="522" font-size="13.5" fill="#e8e0f2">the options you type, and the order</text>
+    <text x="880" y="541" font-size="13.5" fill="#e8e0f2">everything else runs in</text>
+
+    <rect x="860" y="596" width="285" height="118" rx="12" fill="#ffffff" stroke="#9a9a9a"
+          stroke-width="2" stroke-dasharray="6 5"/>
+    <text x="880" y="626" font-size="16" font-weight="700" fill="#1a1a1a">start reading here</text>
+    <text x="880" y="650" font-size="13.5" fill="#3a3a3a">to follow the biology rather than the</text>
+    <text x="880" y="669" font-size="13.5" fill="#3a3a3a">drawing, read calls.py then</text>
+    <text x="880" y="688" font-size="13.5" fill="#3a3a3a">hypotheses.py. Each rule says what it</text>
+    <text x="880" y="707" font-size="13.5" fill="#3a3a3a">assumes and where it would break.</text>
+  </g>
+</svg>

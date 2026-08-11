@@ -678,6 +678,9 @@ class Model:
         # were confirmed belongs in the range, and anything further down does
         # not. Without this the range was whatever survived --max-hypotheses.
         self.range_slack: float = 1.5
+        # Score gap below which two hypotheses are treated as indistinguishable.
+        # Set from --tie-threshold.
+        self.tie_threshold: float = 0.75
         # Height of the tallest chromosome bar, in px. The paired figure sets
         # this so the chromosome row fills the triangle it is given rather than
         # sitting in a shallow strip along the bottom.
@@ -741,16 +744,43 @@ class Model:
 
     def summary_sentence(self) -> str:
         chroms = [s for s in self.sequences if s.role == "chromosome"]
+        tail = ""
         parts = [f"{len(chroms)} chromosome-scale sequence{'s' if len(chroms) != 1 else ''}"]
         rng = self.count_range()
         if rng:
             best, low, high = rng
             complete = sum(1 for s in self.sequences if s.note == "telomere to telomere")
-            span = "" if low == high else f", though the graph supports anywhere from {low} to {high}"
-            parts[0] = (
-                f"{best} linear molecule{'s' if best != 1 else ''} "
-                f"({complete} capped by telomeres at both ends){span}"
-            )
+            # Lead with the AMBIGUITY when the top two hypotheses are within the
+            # tie threshold of each other. Asserting a point estimate and then
+            # admitting three paragraphs later that the graph cannot separate it
+            # from the runner-up is the single most misleading thing this tool
+            # did: the first sentence is what gets quoted, and it was more
+            # confident than the evidence.
+            tied = False
+            hs = self.hypotheses or []
+            if len(hs) >= 2:
+                tied = abs(hs[0].score - hs[1].score) <= self.tie_threshold
+            if tied and low != high:
+                lead = (
+                    f"{low} to {high} linear molecules, and the graph does not choose "
+                    f"between them"
+                )
+                tail = (
+                    f" The drawn reading has {best} ({complete} capped by telomeres at "
+                    f"both ends), but it beats the next-best by only "
+                    f"{abs(hs[0].score - hs[1].score):.2f} - inside the "
+                    f"{self.tie_threshold:.2f} this tool treats as indistinguishable."
+                )
+                parts[0] = lead
+            else:
+                span = (
+                    "" if low == high
+                    else f", though the graph supports anywhere from {low} to {high}"
+                )
+                parts[0] = (
+                    f"{best} linear molecule{'s' if best != 1 else ''} "
+                    f"({complete} capped by telomeres at both ends){span}"
+                )
         ua = self.unassigned()
         if ua:
             parts.append(
@@ -766,9 +796,10 @@ class Model:
                 f"{len(up)} unplaced sequence{'s' if len(up) != 1 else ''} "
                 f"totalling {human_bp(sum(s.length for s in up))}"
             )
-        return "This assembly resolves into " + ", ".join(parts[:-1]) + (
+        out = "This assembly resolves into " + ", ".join(parts[:-1]) + (
             f" and {parts[-1]}." if len(parts) > 1 else parts[0] + "."
         )
+        return out + tail
 
 
 def model_to_config(model: Model) -> Dict:
@@ -1033,7 +1064,7 @@ def model_from_hypothesis(
                     (n, colours.get(n, "#cfcfcf"), by_name[n].length if n in by_name else 0)
                     for n in nb
                 )
-        capped, opened, cap_notes = chain_end_status(
+        capped, opened, cap_notes, _cappers = chain_end_status(
             chain, {v for j in hyp.joins for v in j.via}, adj, telomeric, end_adj
         )
         rec.evidence.append(

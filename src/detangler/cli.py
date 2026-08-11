@@ -314,6 +314,7 @@ def build_model_graph_first(args, log: Log) -> Tuple[Model, Dict[str, str]]:
     model.segment_calls = calls
     model.hypotheses = hypotheses
     model.range_slack = args.speculative_penalty
+    model.tie_threshold = args.tie_threshold
     model.baseline_depth = baseline
     model.baseline_basis = (
         f"median depth of segments at least {human_bp(args.baseline_min_length)} long"

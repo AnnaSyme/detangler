@@ -86,3 +86,77 @@ and whatever exists for karyotype inference from graph topology. See
 adversarial sweeps already established, so this does not repeat them.
 
 **Status:** not started. Raised 10 Aug 2026.
+
+## 3. Ploidy: let the user declare it
+
+**The problem.** Everything downstream of the depth baseline assumes one thing:
+that a segment at baseline depth is present once. The baseline is the median
+depth of segments >= 1 Mb, so that assumption is only safe for a haploid
+assembly, or a diploid one that has been fully purged. It is wrong for:
+
+- a **collapsed diploid**, where the long segments are two haplotypes merged and
+  sit at 2x - so every copy number is halved and real repeats look single-copy;
+- an unpurged diploid, where **haplotigs sit at ~0.5x** and are currently
+  classified `low coverage / foreign`, i.e. as contamination. This is the single
+  most attackable rule in the tool: ~0.5x is exactly the heterozygous-haplotig
+  expectation, and calling the commonest phenomenon in a diploid assembly
+  "foreign" will be the first thing a reviewer picks on;
+- **polyploids**, where the whole notion of one baseline breaks down.
+
+**The proposal.** An optional `--ploidy N` (or `--ploidy haploid|diploid|N`).
+Default: unset, and the tool says so rather than assuming 1. When given, it
+would:
+
+1. Scale the expectation: a single-copy segment is expected at
+   `baseline`, a haplotig at `baseline / N`, a two-copy repeat at `2 * baseline`.
+2. Reclassify the ~0.5x class. With `--ploidy 2` a segment at half baseline,
+   of decent length, and sitting in a bubble or beside a same-length segment is
+   a HAPLOTIG - not contamination. Say so, and offer to exclude it from the
+   molecule count rather than counting it as a chromosome.
+3. Adjust the expected molecule count. A diploid's chromosome complement is 2n;
+   whether the tool should report n molecules or 2n depends on whether the
+   assembly is phased, which the user knows and the graph does not.
+4. Feed the figure: draw haplotig pairs side by side rather than as separate
+   chromosomes.
+
+**Keep it a declaration, not an inference.** Ploidy could be estimated from the
+depth histogram - a second mode at half the main one is diagnostic - but that is
+real computational work and it is the assembler's and purge_dups' job. Asking
+the user, who almost always knows, is one flag and no computation. The tool
+should still SAY what it assumed, so the assumption travels with the result.
+
+**Also worth a flag: expected chromosome sizes.** The karyogram panel draws each
+molecule as an outline filled by the contigs that compose it. With only the
+graph, the outline is the contigs' own extent, so it always reads as full.
+Given expected sizes - from a related assembly, a cytogenetic estimate, or a
+previous version - the outline becomes the target and the shortfall is visible
+as unfilled space. That is what would let the figure answer "are any expected
+bits missing", which it cannot honestly answer today.
+
+**Status:** DONE 11 Aug 2026, as `--assembly-type primary|phased|collapsed`
+(default `primary`) rather than `--ploidy N` — what governs how depth should be
+read is what the ASSEMBLER emitted, not the organism's ploidy. A segment in the
+`--haplotig-band` (default 0.35-0.65) and at least `--haplotig-min-length`
+(20 kb) is now classed `haplotig`, not `low coverage / foreign`. Items 3 and 4
+above (rescaling for collapsed assemblies, drawing haplotig pairs side by side)
+are NOT yet done. The `--expected-chromosome-sizes` idea at the end is also
+still open.
+
+## 4. Centromere-shaped bridges as positive evidence
+
+**Status:** DONE 11 Aug 2026. A long (>= `--centromere-min-length`, 10 kb),
+markedly AT-rich, low-copy segment that bridges exactly two backbone ends now
+earns `--centromere-bonus` (1.2), and a join through it pays only
+`--centromere-speculative-discount` (0.4) of the usual speculative penalty. The
+reasoning: an assembler is EXPECTED to fail to read through an AT-rich
+centromere, so the missing through-path is explained rather than damning.
+
+Validated on the *Fusarium graminearum* test GFA, where it lifts the correct
+4-chromosome answer to rank 1 with no `--expected-chromosomes` supplied. It
+stays silent on the demo data. It is a hypothesis-raiser, not a diagnosis, and
+the report says so in those words.
+
+**Still open:** a join's bridging segment is not DRAWN inside the chromosome
+bar, so chr 1 renders as edge_2 + edge_7 with the 51.5 kb centromere invisible.
+Also unbuilt: a `centromere_candidate` segment class, and testing the rule on a
+lineage whose centromeres are not AT-rich.

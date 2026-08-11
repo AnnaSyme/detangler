@@ -312,6 +312,7 @@ def build_model_graph_first(args, log: Log) -> Tuple[Model, Dict[str, str]]:
 
     model.segment_calls = calls
     model.hypotheses = hypotheses
+    model.range_slack = args.speculative_penalty
     model.baseline_depth = baseline
     model.baseline_basis = (
         f"median depth of segments at least {human_bp(args.baseline_min_length)} long"
@@ -457,10 +458,53 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--tie-threshold", type=float, default=0.75,
                    help="hypotheses within this score of the best are reported as tied "
                         "(default 0.75)")
+    g.add_argument("--assembly-type", choices=["primary", "phased", "collapsed"],
+                   default="primary",
+                   help="what the ASSEMBLER produced, which is what decides how depth should "
+                        "be read - not the organism's ploidy. 'primary' (default): one "
+                        "haplotype per locus, alternates written to a separate file, so a "
+                        "segment at about half baseline is an unpurged haplotig. 'phased': "
+                        "both haplotypes in this graph, so expect roughly twice the "
+                        "chromosome count. 'collapsed': haplotypes merged, so the long "
+                        "contigs sit at twice the haploid depth and every copy number below "
+                        "is understated by a factor of two")
+    g.add_argument("--haplotig-band", type=float, nargs=2, default=(0.35, 0.65),
+                   metavar=("LOW", "HIGH"),
+                   help="copy-number range that reads as a haplotig rather than as foreign "
+                        "sequence (default 0.35 0.65)")
+    g.add_argument("--haplotig-min-length", type=parse_size, default=20_000,
+                   help="shorter than this, a half-depth segment is not called a haplotig - "
+                        "there is not enough of it to tell (default 20k)")
     g.add_argument("--placement-tolerance", type=float, default=0.5,
                    help="how far a segment's depth-derived copy number may fall short "
                         "of the number of places it is drawn before that is reported as a "
                         "contradiction (default 0.5)")
+    g.add_argument("--overcopy-factor", type=float, default=2.5,
+                   help="how many times the number of places a segment is drawn its "
+                        "depth-derived copy number may reach before that is reported as "
+                        "a contradiction. This is the other direction of the same check: "
+                        "a segment drawn once at 65 copies is a tandem array or a "
+                        "collapsed repeat, not a single copy (default 2.5)")
+    g.add_argument("--graph-triangle", dest="graph_triangle", action="store_true",
+                   help="push the assembly graph out of the lower-right triangle of its panel. "
+                        "Off by default: it existed so a chromosome row drawn BELOW the graph "
+                        "could interlock with it, and the panels are now side by side, where "
+                        "they cannot collide and the graph should use its whole rectangle")
+    g.set_defaults(graph_triangle=False)
+    g.add_argument("--centromere-bonus", type=float, default=1.2,
+                   help="score added when a join runs through a long, markedly AT-rich, "
+                        "low-copy segment that bridges exactly two backbone ends. In lineages "
+                        "with AT-rich regional centromeres (many filamentous fungi) that is "
+                        "what a centromere between two chromosome arms looks like. Set to 0 to "
+                        "switch the rule off (default 1.2)")
+    g.add_argument("--centromere-min-length", type=parse_size, default=10_000,
+                   help="shortest AT-rich bridge that can be read as centromeric; below this "
+                        "there is not enough sequence to mean anything (default 10k)")
+    g.add_argument("--centromere-speculative-discount", type=float, default=0.4,
+                   help="fraction of --speculative-penalty applied to a join through an "
+                        "AT-rich centromere candidate. An assembler is EXPECTED to fail to "
+                        "read through such a block, so the missing through-path is explained "
+                        "rather than damning - discounted, not waived (default 0.4)")
     g.add_argument("--speculative-penalty", type=float, default=1.5,
                    help="score penalty per join that is not supported by a traversable "
                         "path, i.e. where two segments merely end in the same one-sided "

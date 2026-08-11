@@ -98,7 +98,11 @@ def find_telomere_arrays(
     n = len(up)
     if not n:
         return {}
-    w = min(max(window, 1), n)
+    # The two windows must not overlap. On a segment SHORTER than twice the
+    # window, an uncapped window makes both regions cover the whole sequence,
+    # so one array near the start gets reported at BOTH ends - which is how a
+    # one-sided telomeric tip came to look capped on both sides.
+    w = min(max(window, 1), max(n // 2, 1))
     regions = {"s": (0, w), "e": (max(n - w, 0), n)}
     out: Dict[str, Tuple[str, int, int]] = {}
     for end, (lo, hi) in regions.items():

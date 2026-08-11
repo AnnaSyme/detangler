@@ -45,12 +45,13 @@ from .calls import (
     SegmentCall,
 )
 from .render_common import (
+    RIBBON_W,
     MIN_DRAWN_PX,
     drawn_length_px,
     BAR_W,
+    FS_ANNOT,
     FS_HEADING,
-    FS_LABEL,
-    FS_SUB,
+    FS_PRIMARY,
     _arc_path,
 )
 
@@ -87,11 +88,13 @@ def segment_draw_length(length: int, args) -> float:
 
 def segment_thickness(depth: Optional[float] = None) -> float:
     """
-    Uniform, and equal to the chromosome bar width (v9 design). Thickness used to
-    track read depth, but that put a second variable into the ribbon width and
-    made the two panels hard to match up; depth is now carried by the label only.
+    Uniform. Thickness used to track read depth, but that put a second variable
+    into the ribbon width and made the two panels hard to match up; depth is
+    carried by the label instead. Wider than a chromosome bar, because a ribbon
+    in the graph has to hold a number and be followed through a tangle, whereas
+    a chromosome reads better slim.
     """
-    return float(BAR_W)
+    return float(RIBBON_W)
 
 
 def _graphviz_positions(
@@ -123,11 +126,39 @@ def _graphviz_positions(
     lines.append("}")
     dot = "\n".join(lines)
 
+    # K is graphviz's natural spring length and it is in INCHES. It was 1.4,
+    # i.e. 100.8 pt - about 3.7x the bead spacing everything downstream assumes,
+    # so `-Gsep=+18` (a node-separation budget meant to be read against the
+    # ribbon width) was being applied at a scale we had not chosen. Deriving K
+    # from `spacing` makes the whole call dimensionally coherent.
+    k_inches = max(spacing, 1.0) / 72.0
+
     try:
+        # sfdp, not neato. Bandage leans on OGDF's FMMM, which is a MULTILEVEL
+        # force method - it coarsens the graph, lays the coarse version out, then
+        # refines - and that is where its clean global arrangement comes from.
+        # sfdp is the multilevel engine in graphviz; neato is single-level.
+        # sfdp implements Yifan Hu, "Efficient and high quality force-directed
+        # graph drawing", Mathematica Journal 10(1), 2005.
+        # http://yifanhu.net/PUB/graph_draw_small.pdf
+        #
+        # Re-measured 11 Aug 2026 after finding that sfdp SILENTLY IGNORES `len`
+        # (the graphviz docs mark it neato/fdp only, and a direct test confirms
+        # it: neato honours a len=3.0 edge among len=0.2 edges, sfdp returns
+        # them uniform). The original crossing measurement was therefore taken
+        # under that bug, so it was redone. It still holds: on this graph sfdp
+        # gives 0 ribbon crossings against neato's 2, with or without the K fix.
+        # Chain length survives sfdp through BEAD COUNT rather than through
+        # `len`, and the constraint-projection pass restores it exactly anyway.
         proc = subprocess.run(
-            ["neato", "-Tplain", "-Goverlap=prism", "-Gsep=+6", "-Gmodel=subset"],
+            ["sfdp", "-Tplain", "-Goverlap=prism", "-Gsep=+18", f"-GK={k_inches:.4f}"],
             input=dot, capture_output=True, text=True, timeout=120,
         )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            proc = subprocess.run(
+                ["neato", "-Tplain", "-Goverlap=prism", "-Gsep=+6", "-Gmodel=circuit"],
+                input=dot, capture_output=True, text=True, timeout=120,
+            )
     except (OSError, subprocess.SubprocessError):
         return False
     if proc.returncode != 0 or not proc.stdout.strip():
@@ -146,8 +177,60 @@ def _graphviz_positions(
             got += 1
     if got < len(pts) * 0.9:
         return False
-    log.info(f"graph layout: initial placement from graphviz neato ({got} points)")
+    log.info(f"graph layout: initial placement from graphviz sfdp ({got} points)")
     return True
+
+
+def _fan_angles(theta: List[float], gap: float) -> List[float]:
+    """
+    Spread angles apart to a minimum gap, moving them AS LITTLE AS POSSIBLE.
+
+    Solves  min sum (theta'_i - theta_i)^2  subject to  theta'_{i+1} - theta'_i
+    >= gap, with the cyclic order preserved. Substituting phi_i = theta_i - i*gap
+    turns the gap constraint into plain monotonicity, so the exact optimum is the
+    non-decreasing L2 isotonic regression of phi - computed here by
+    pool-adjacent-violators in O(k). The result is recentred on the original
+    circular mean so the fan does not drift.
+
+    Minimising displacement is the point. An even fan would splay the contigs
+    with mechanical symmetry, which is a different kind of artificial; this keeps
+    whatever asymmetry the layout found and only opens the gaps that are too
+    tight to read.
+
+    PAVA: Ayer, Brunk, Ewing, Reid & Silverman (1955), Ann. Math. Statist.
+    26:641-647. https://projecteuclid.org/euclid.aoms/1177728423
+
+    Returns angles in the ORDER GIVEN, not sorted.
+    """
+    k = len(theta)
+    if k < 2:
+        return list(theta)
+    gap = min(gap, 2.0 * math.pi / k)      # k gaps cannot exceed a full turn
+    order = sorted(range(k), key=lambda i: theta[i])
+    base = theta[order[0]]
+    # unroll onto a line starting at the first angle
+    lin = [(theta[i] - base) % (2.0 * math.pi) for i in order]
+    phi = [lin[j] - j * gap for j in range(k)]
+    # PAVA: pool adjacent violators of non-decreasing order, weights all 1
+    vals: List[float] = []
+    wts: List[int] = []
+    for v in phi:
+        vals.append(v)
+        wts.append(1)
+        while len(vals) > 1 and vals[-2] > vals[-1]:
+            v2, w2 = vals.pop(), wts.pop()
+            v1, w1 = vals.pop(), wts.pop()
+            vals.append((v1 * w1 + v2 * w2) / (w1 + w2))
+            wts.append(w1 + w2)
+    flat: List[float] = []
+    for v, wt in zip(vals, wts):
+        flat.extend([v] * wt)
+    out_lin = [flat[j] + j * gap for j in range(k)]
+    shift = (sum(lin) - sum(out_lin)) / k     # recentre
+    res = [0.0] * k
+    for j, i in enumerate(order):
+        res[i] = base + out_lin[j] + shift
+    return res
 
 
 def bandage_layout(
@@ -173,7 +256,7 @@ def bandage_layout(
     if not names:
         return {}, 100.0, 100.0
 
-    spacing = max(segment_thickness() * 0.9, 8.0)
+    spacing = max(segment_thickness() * 0.42, 8.0)
     chain: Dict[str, List[int]] = {}
     pts: List[List[float]] = []
     springs: List[Tuple[int, int, float, float]] = []
@@ -241,7 +324,7 @@ def bandage_layout(
     # hand-rolled model below still runs, but starting from a good global layout
     # is worth far more than any amount of tuning it.
     if _graphviz_positions(pts, springs, spacing, log):
-        iters_scale = 0.25
+        iters_scale = 0.75
     else:
         iters_scale = 1.0
 
@@ -267,7 +350,7 @@ def bandage_layout(
                 # repulsion is capped in range: beyond a few bead-widths two
                 # contigs do not need to push each other around, and letting
                 # them do so inflates the canvas
-                if d > k * 6.0:
+                if d > k * 14.0:
                     continue
                 f = (k * k) / d
                 ux, uy = dx / d, dy / d
@@ -285,6 +368,37 @@ def bandage_layout(
             disp[a][1] -= uy * f
             disp[b][0] += ux * f
             disp[b][1] += uy * f
+        if args.graph_triangle:
+            # Keep-out for the lower-right triangle, applied as a FORCE inside
+            # the solver rather than as a projection after it. That is the whole
+            # difference: here it negotiates with repulsion and the springs in
+            # the same iteration, so the layout finds a shape satisfying all
+            # three. Bolted on afterwards it simply fought the length pass and
+            # squashed contigs. The chromosome row is a staircase rising to the
+            # right and so fills the complementary triangle; the two figures
+            # then interlock instead of each claiming a rectangle.
+            #
+            # Applied in the FORCE phase ONLY. Interleaving it with the
+            # constraint projection as well was what wrecked the layout: it kept
+            # shoving beads together after the separation pass had pulled them
+            # apart, and ribbons ended up 50 px apart on a 64 px stroke. Left to
+            # the force phase alone, the 120 pure length-and-separation passes
+            # that follow have the last word - measured 89 px apart, with the
+            # ink past the diagonal still down from 0.071 to 0.045.
+            xs_ = [q[0] for q in pts]
+            ys_ = [q[1] for q in pts]
+            X0_, Y0_ = min(xs_), min(ys_)
+            W_ = (max(xs_) - X0_) or 1.0
+            H_ = (max(ys_) - Y0_) or 1.0
+            nx_, ny_ = 1.0 / W_, 1.0 / H_
+            nl_ = math.hypot(nx_, ny_) or 1.0
+            nx_, ny_ = nx_ / nl_, ny_ / nl_
+            for i in range(n_pts):
+                t_ = (pts[i][0] - X0_) / W_ + (pts[i][1] - Y0_) / H_ - 1.0
+                if t_ > 0:
+                    push = (t_ / nl_) * 0.6
+                    disp[i][0] -= nx_ * push
+                    disp[i][1] -= ny_ * push
         for i in range(n_pts):
             disp[i][0] -= pts[i][0] * 0.004
             disp[i][1] -= pts[i][1] * 0.004
@@ -384,28 +498,12 @@ def bandage_layout(
     # drawn. Each interior bead is pulled hard towards the midpoint of its
     # neighbours and the spacing is then restored; the two ends are held, so
     # junctions do not move.
-    # A contig laid out between two fixed ends settles as a straight run, which
-    # is accurate but reads as a wire diagram. Each chain is bowed to one side
-    # first - alternating, so neighbouring contigs curve away from each other -
-    # and the smoothing below then turns that into a clean arc rather than a
-    # kinked one.
-    for si, n in enumerate(sorted(names)):
-        idxs = chain[n]
-        if len(idxs) < 3:
-            continue
-        ax_, ay_ = pts[idxs[0]]
-        bx_, by_ = pts[idxs[-1]]
-        vx_, vy_ = bx_ - ax_, by_ - ay_
-        vlen_ = math.hypot(vx_, vy_) or 1.0
-        nx_, ny_ = -vy_ / vlen_, vx_ / vlen_
-        amp = vlen_ * 0.22 * (1 if si % 2 else -1)
-        for b in range(1, len(idxs) - 1):
-            t = b / (len(idxs) - 1)
-            k_ = math.sin(math.pi * t)
-            pts[idxs[b]][0] += nx_ * amp * k_
-            pts[idxs[b]][1] += ny_ * amp * k_
-
-    for _round in range(60):
+    # No artificial bow. A sinusoidal displacement added to every chain, with
+    # its direction alternating by index, produced curves that were identical in
+    # shape and unrelated to anything in the graph - decoration, and it read as
+    # decoration. A contig should bend because its neighbours push it, which is
+    # where the curve in a Bandage layout actually comes from.
+    for _round in range(18):
         for n in names:
             idxs = chain[n]
             if len(idxs) < 3:
@@ -415,8 +513,8 @@ def bandage_layout(
                 i, prv, nxt = idxs[b], idxs[b - 1], idxs[b + 1]
                 mx_ = (pts[prv][0] + pts[nxt][0]) / 2.0
                 my_ = (pts[prv][1] + pts[nxt][1]) / 2.0
-                new_xy.append((i, pts[i][0] * 0.25 + mx_ * 0.75,
-                                  pts[i][1] * 0.25 + my_ * 0.75))
+                new_xy.append((i, pts[i][0] * 0.62 + mx_ * 0.38,
+                                  pts[i][1] * 0.62 + my_ * 0.38))
             for i, nx_, ny_ in new_xy:
                 pts[i][0], pts[i][1] = nx_, ny_
         for n in names:
@@ -433,6 +531,136 @@ def bandage_layout(
                     pts[i][1] += dy * corr
                     pts[j][0] -= dx * corr
                     pts[j][1] -= dy * corr
+
+    # ---- fan the hubs and clamp the chain end tangents ----
+    # Two problems, one fix.
+    #
+    # (1) The smoothing above holds each chain's end POSITIONS but leaves its end
+    # TANGENTS free. A chain with pinned endpoints and free tangents, smoothed to
+    # convergence, is a CIRCULAR ARC - constant curvature, which is the most
+    # machine-looking shape there is, and measurably what three of the four long
+    # contigs had become. Pinning the tangents as well makes the minimum-bending
+    # curve an Euler elastica instead, whose curvature VARIES along the stroke.
+    # That variation is what reads as a confident drawn line, and it is derived
+    # entirely from real geometry - the layout's endpoints and the graph's joins.
+    # On minimum-bending-energy curves being piecewise elastica: Levien & Sequin,
+    # "Interpolating splines: which is the fairest of them all?", CAD &
+    # Applications 6 (2009), sec. 2.1.
+    # https://people.eecs.berkeley.edu/~sequin/PAPERS/2009_CAD_Levien_Sequin.pdf
+    #
+    # (2) Where several contigs meet at one end, they leave it at whatever angles
+    # the physics happened to give, often nearly on top of each other.
+    #
+    # So: compute a target outward direction per end, spread the ones that share
+    # a hub, then rotate each chain's first few beads to match. A rotation about
+    # the pinned end bead is an isometry, so drawn length is preserved exactly.
+    def _end_idx(seg: str, end: str) -> int:
+        return chain[seg][0] if end == "s" else chain[seg][-1]
+
+    def _tangent_out(seg: str, end: str, span: float) -> Tuple[float, float]:
+        idxs = chain[seg] if end == "e" else list(reversed(chain[seg]))
+        tip = pts[idxs[-1]]
+        ref = pts[idxs[0]]
+        acc = 0.0
+        for k2 in range(len(idxs) - 1, 0, -1):
+            a_, b_ = pts[idxs[k2]], pts[idxs[k2 - 1]]
+            acc += math.hypot(a_[0] - b_[0], a_[1] - b_[1])
+            if acc >= span:
+                ref = b_
+                break
+        dx, dy = tip[0] - ref[0], tip[1] - ref[1]
+        d = math.hypot(dx, dy) or 1.0
+        return dx / d, dy / d
+
+    partners: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}
+    for l in links:
+        if l.a not in chain or l.b not in chain or l.a == l.b:
+            continue
+        ae = "e" if l.a_orient == "+" else "s"
+        be = "s" if l.b_orient == "+" else "e"
+        partners.setdefault((l.a, ae), []).append((l.b, be))
+        partners.setdefault((l.b, be), []).append((l.a, ae))
+
+    w_rib = segment_thickness()
+    # Two ribbons of width w are visibly clear of one another at radial distance
+    # d from a hub once their angular gap exceeds ~1.15*w/d. Taking d = 2w - the
+    # distance at which a reader wants them already separate - gives ~33 degrees.
+    min_gap = 1.15 / 2.0
+    target: Dict[Tuple[str, str], Tuple[float, float]] = {}
+    for hub, ps in partners.items():
+        if len(ps) < 2:
+            continue
+        hx, hy = pts[_end_idx(*hub)]
+        incident = [hub] + [q for q in ps if q in partners]
+        seen_i: List[Tuple[str, str]] = []
+        for q in incident:
+            if q not in seen_i:
+                seen_i.append(q)
+        if len(seen_i) < 2:
+            continue
+        # angle of the direction each contig DEPARTS the hub (= -outward)
+        th = []
+        for seg, end in seen_i:
+            ux, uy = _tangent_out(seg, end, w_rib * 0.75)
+            th.append(math.atan2(-uy, -ux))
+        for (seg, end), a in zip(seen_i, _fan_angles(th, min_gap)):
+            target[(seg, end)] = (-math.cos(a), -math.sin(a))
+
+    if target:
+        for _pass in range(6):
+            for (seg, end), (tx, ty) in target.items():
+                idxs = chain[seg] if end == "s" else list(reversed(chain[seg]))
+                if len(idxs) < 3:
+                    continue
+                m = max(3, min(len(idxs) - 1,
+                               int(round(w_rib * 2.5 / max(chain_rest[seg], 1e-6)))))
+                if m >= len(idxs):
+                    continue
+                # How far the FIRST segment is from where it should point.
+                ax_, ay_ = pts[idxs[1]][0] - pts[idxs[0]][0], pts[idxs[1]][1] - pts[idxs[0]][1]
+                al = math.hypot(ax_, ay_) or 1e-6
+                cur = math.atan2(ay_ / al, ax_ / al)
+                dth = math.atan2(-ty, -tx) - cur
+                dth = (dth + math.pi) % (2.0 * math.pi) - math.pi
+                dth *= 0.5   # damped, so the chain eases round instead of snapping
+                # Spread the correction over m joints with a smoothly DECAYING
+                # profile, applied as nested suffix rotations: rotate beads
+                # k..end about bead k-1 by the step in the profile, so segment
+                # k's direction ends up turned by phi_k and segment m by nothing.
+                #
+                # What this replaces: rotating the first m beads RIGIDLY about
+                # the pinned end. That put the whole correction into a single
+                # joint and left everything before it perfectly straight, which
+                # is why a hairpin read as two straight legs and a bend rather
+                # than as one curve. Every step here is still a rigid rotation
+                # of a suffix, so segment lengths are preserved exactly.
+                prev_phi = 0.0
+                for k in range(m):
+                    phi = dth * (1.0 - k / float(m)) ** 2
+                    step = phi - prev_phi
+                    prev_phi = phi
+                    if abs(step) < 1e-12:
+                        continue
+                    px, py = pts[idxs[k]]
+                    cs, sn = math.cos(step), math.sin(step)
+                    for b in idxs[k + 1:]:
+                        rx, ry = pts[b][0] - px, pts[b][1] - py
+                        pts[b][0] = px + rx * cs - ry * sn
+                        pts[b][1] = py + rx * sn + ry * cs
+            for n in names:
+                idxs = chain[n]
+                rest = chain_rest[n]
+                for _sub in range(4):
+                    for b in range(len(idxs) - 1):
+                        i, j = idxs[b], idxs[b + 1]
+                        dx = pts[j][0] - pts[i][0]
+                        dy = pts[j][1] - pts[i][1]
+                        d = math.hypot(dx, dy) or 1e-6
+                        corr = (d - rest) / d * 0.5
+                        pts[i][0] += dx * corr
+                        pts[i][1] += dy * corr
+                        pts[j][0] -= dx * corr
+                        pts[j][1] -= dy * corr
 
     poly = {n: [(pts[i][0], pts[i][1]) for i in chain[n]] for n in names}
 
@@ -459,51 +687,201 @@ def bandage_layout(
         ys = [p[1] for n in g for p in poly[n]]
         return min(xs), min(ys), max(xs), max(ys)
 
+    # Rotate to fill a WIDE band rather than to align a principal axis.
+    #
+    # This used to take the PCA principal axis and lay it horizontal. That gets
+    # the long direction right but says nothing about the shape of what is left
+    # over: a sprawling component can be principal-axis-aligned and still leave a
+    # whole corner of the panel empty, which is what happened once the fanning
+    # spread the components out. Searching rotations and scoring the resulting
+    # BOUNDING BOX directly is the fix, and it is what Bandage does with
+    # stepsForRotatingComponents (program/graphlayoutworker.cpp).
+    #
+    # The score wants a box near ASPECT_TARGET wide-to-tall, because the figure
+    # stacks the graph above the chromosomes and so height is the scarce
+    # dimension, with a light preference for smaller area to break ties. Applied
+    # per component first - each one is packed separately, so each gets to
+    # choose its own angle - and then once more to the assembled panel.
+    ASPECT_TARGET = 1.9
+
+    def _rot(v, ang, ox, oy):
+        ca, sa = math.cos(ang), math.sin(ang)
+        return [((x - ox) * ca - (y - oy) * sa, (x - ox) * sa + (y - oy) * ca)
+                for x, y in v]
+
+    def _best_angle(pointsets) -> float:
+        pts = [p for v in pointsets for p in v]
+        if len(pts) < 3:
+            return 0.0
+        ox = sum(p[0] for p in pts) / len(pts)
+        oy = sum(p[1] for p in pts) / len(pts)
+        best, best_sc = 0.0, None
+        for step in range(90):                     # 2 degree steps over a half turn
+            ang = math.pi * step / 90.0
+            r = _rot(pts, ang, ox, oy)
+            xs_ = [q[0] for q in r]; ys_ = [q[1] for q in r]
+            bw = max(xs_) - min(xs_); bh = max(ys_) - min(ys_)
+            if bw <= 1e-6 or bh <= 1e-6:
+                continue
+            # log-distance from the target ratio, plus a light area term...
+            sc = abs(math.log(bw / bh) - math.log(ASPECT_TARGET)) + 0.15 * math.log(bw * bh)
+            # ...and a push towards the UPPER-LEFT TRIANGLE. The chromosome
+            # panel is a row of bars on a shared baseline sorted short to tall,
+            # so its silhouette is a staircase rising to the right - a lower-
+            # right triangle. Cutting the square along that diagonal gives the
+            # graph the complementary upper-left triangle, and the two shapes
+            # interlock instead of each claiming a full rectangle. Scored as the
+            # mean depth of the ink past the diagonal, so a layout only pays for
+            # how far into the chromosomes' half it actually reaches.
+            x0_, y0_ = min(xs_), min(ys_)
+            over = 0.0
+            for qx, qy in r:
+                t = (qx - x0_) / bw + (qy - y0_) / bh - 1.0
+                if t > 0:
+                    over += t
+            sc += 8.0 * (over / len(r))
+            if best_sc is None or sc < best_sc:
+                best, best_sc = ang, sc
+        return best
+
+    for g in comps.values():
+        ang = _best_angle([poly[n] for n in g])
+        if abs(ang) < 1e-9:
+            continue
+        pts_g = [p for n in g for p in poly[n]]
+        ox = sum(p[0] for p in pts_g) / len(pts_g)
+        oy = sum(p[1] for p in pts_g) / len(pts_g)
+        for n in g:
+            poly[n] = _rot(poly[n], ang, ox, oy)
+
     groups = sorted(comps.values(), key=lambda g: -sum(by_name[n].length for n in g))
     gap = segment_thickness() * 1.5
-    mx0, my0, mx1, my1 = bbox(groups[0])
-    # Stacked BESIDE the main component, not beneath it. The figure as a whole is
-    # graph above chromosomes, so height is the scarce dimension - a row of
-    # isolated contigs underneath made the whole thing too tall to view at once,
-    # while there was empty space to the side.
-    col_x = mx1 + gap
-    cur_y = my0
-    for g in groups[1:]:
-        gx0, gy0, _gx1, gy1 = bbox(g)
-        dx, dy = col_x - gx0, cur_y - gy0
-        for n in g:
-            poly[n] = [(x + dx, y + dy) for x, y in poly[n]]
-        cur_y += (gy1 - gy0) + gap
 
-    # Rotate so the layout's LONG axis lies horizontal. A spring layout comes out
-    # at an arbitrary angle, and the figure stacks the graph above the
-    # chromosomes, so height is the scarce dimension. A quarter turn only helps
-    # when the spread happens to be axis-aligned; the principal axis is the
-    # general answer.
-    allp = [p for n in names for p in poly[n]]
-    if len(allp) > 2:
-        cx0 = sum(p[0] for p in allp) / len(allp)
-        cy0 = sum(p[1] for p in allp) / len(allp)
-        sxx = sum((p[0] - cx0) ** 2 for p in allp)
-        syy = sum((p[1] - cy0) ** 2 for p in allp)
-        sxy = sum((p[0] - cx0) * (p[1] - cy0) for p in allp)
-        theta = 0.5 * math.atan2(2 * sxy, sxx - syy)
-        ct, st = math.cos(-theta), math.sin(-theta)
-        poly = {
-            n: [
-                ((x - cx0) * ct - (y - cy0) * st, (x - cx0) * st + (y - cy0) * ct)
-                for x, y in v
-            ]
-            for n, v in poly.items()
-        }
+    # Isolated components go into the HOLES the main component leaves, biased
+    # towards the top left.
+    #
+    # They used to be stacked in a column beside the main component, which put
+    # them in the one corner the figure cannot spare: the bottom right, where
+    # the chromosome row goes. It also grew the graph's bounding box sideways
+    # for no reason, since a spring layout always leaves slack somewhere inside
+    # its own box. An organelle ring or an unplaced fragment is small and has no
+    # links, so it can sit anywhere that is empty - there is no reason for it to
+    # claim new canvas.
+    #
+    # Greedy placement on a coarse grid: mark where the main component has ink,
+    # then for each remaining component take the free position that scores best.
+    # The score prefers positions towards the TOP LEFT - away from the diagonal
+    # the chromosomes fill - and penalises any position that would enlarge the
+    # overall bounding box, so filling a hole always beats growing the figure.
+    if len(groups) > 1:
+        cell = max(segment_thickness() * 0.9, 12.0)
+        clear = segment_thickness() * 1.15
+
+        def _pts(g):
+            return [q for n in g for q in poly[n]]
+
+        occupied: Set[Tuple[int, int]] = set()
+
+        def _mark(points):
+            r = int(math.ceil(clear / cell))
+            for x, y in points:
+                gx, gy = int(x // cell), int(y // cell)
+                for a in range(-r, r + 1):
+                    for b in range(-r, r + 1):
+                        occupied.add((gx + a, gy + b))
+
+        def _free(points, dx, dy):
+            return all(
+                (int((x + dx) // cell), int((y + dy) // cell)) not in occupied
+                for x, y in points
+            )
+
+        _mark(_pts(groups[0]))
+        mx0, my0, mx1, my1 = bbox(groups[0])
+        anchor: Optional[Tuple[float, float]] = None
+        for g in groups[1:]:
+            gx0, gy0, gx1, gy1 = bbox(g)
+            gw_, gh_ = gx1 - gx0, gy1 - gy0
+            pts_g = _pts(g)
+            span_x = max(mx1 - mx0, 1.0)
+            span_y = max(my1 - my0, 1.0)
+            best = None
+            y_ = my0 - gap
+            while y_ <= my1 + gap:
+                x_ = mx0 - gap
+                while x_ <= mx1 + gap:
+                    dx, dy = x_ - gx0, y_ - gy0
+                    if _free(pts_g, dx, dy):
+                        cx = (x_ + gw_ / 2.0 - mx0) / span_x
+                        cy = (y_ + gh_ / 2.0 - my0) / span_y
+                        # Towards the BOTTOM LEFT. Not merely "away from the
+                        # chromosomes" - the top left is further from them - but
+                        # out of the reading path. The eye goes across the graph
+                        # and then down to the chromosome row, and unlinked
+                        # fragments dropped along the top of the graph sit right
+                        # in the middle of that, reading as part of the structure
+                        # when they are precisely the things that have none. The
+                        # low left corner is the one place a reader passes
+                        # through last.
+                        sc = cx + (1.0 - cy)
+                        # Keep them TOGETHER once one has been placed: a cluster
+                        # of unlinked pieces reads as a category, the same pieces
+                        # scattered around the margin read as four separate
+                        # accidents.
+                        if anchor is not None:
+                            ax_, ay_ = anchor
+                            sc += 0.6 * math.hypot(
+                                (x_ + gw_ / 2.0 - ax_) / span_x,
+                                (y_ + gh_ / 2.0 - ay_) / span_y,
+                            )
+                        # ...but never at the cost of a bigger figure
+                        grow = (
+                            max(0.0, mx0 - x_) + max(0.0, (x_ + gw_) - mx1)
+                            + max(0.0, my0 - y_) + max(0.0, (y_ + gh_) - my1)
+                        )
+                        sc += 4.0 * grow / max(span_x, span_y)
+                        if best is None or sc < best[0]:
+                            best = (sc, dx, dy)
+                    x_ += cell
+                y_ += cell
+            if best is None:
+                # nowhere free inside the box: fall back to beside it
+                best = (0.0, mx1 + gap - gx0, my0 - gy0)
+                mx1 += gw_ + gap
+            _, dx, dy = best
+            for n in g:
+                poly[n] = [(x + dx, y + dy) for x, y in poly[n]]
+            anchor = ((gx0 + gx1) / 2.0 + dx, (gy0 + gy1) / 2.0 + dy)
+            _mark(_pts(g))
+            mx0 = min(mx0, gx0 + dx)
+            my0 = min(my0, gy0 + dy)
+            mx1 = max(mx1, gx1 + dx)
+            my1 = max(my1, gy1 + dy)
+
+
+    ang = _best_angle([poly[n] for n in names])
+    if abs(ang) > 1e-9:
+        allp2 = [p for n in names for p in poly[n]]
+        ox = sum(p[0] for p in allp2) / len(allp2)
+        oy = sum(p[1] for p in allp2) / len(allp2)
+        poly = {n: _rot(v, ang, ox, oy) for n, v in poly.items()}
+
     xs = [p[0] for n in names for p in poly[n]]
     ys = [p[1] for n in names for p in poly[n]]
-    if (max(ys) - min(ys)) > (max(xs) - min(xs)):
-        poly = {n: [(y, -x) for x, y in v] for n, v in poly.items()}
-
-    xs = [p[0] for n in names for p in poly[n]]
-    ys = [p[1] for n in names for p in poly[n]]
-    pad = 18.0 + segment_thickness() * 0.5
+    # Everything drawn extends beyond the bead it hangs off: a ribbon by half its
+    # width, a ring by its radius plus half its stroke, a coverage label by its
+    # offset plus the text itself. Padding from bead positions alone shaved
+    # whichever contig happened to sit at the edge of the layout.
+    thick_ = segment_thickness()
+    ring_reach = max(
+        [thick_] + [
+            max(segment_draw_length(by_name[n].length, args) / (2 * math.pi),
+                thick_ * 0.85) + thick_ * 0.3
+            for n in names
+        ]
+    )
+    label_reach = thick_ / 2 + 18 + 12 + 18 * 3.0
+    pad = 18.0 + max(thick_ * 0.6, ring_reach, label_reach)
     minx, miny = min(xs), min(ys)
     width = (max(xs) - minx) + 2 * pad
     height = (max(ys) - miny) + 2 * pad
@@ -663,9 +1041,29 @@ def render_bandage_style_svg(
                 continue
         dot_centre[name] = mid
 
-    allpts = [p for v in geom.values() for p in v]
-    gcx = sum(p[0] for p in allpts) / max(len(allpts), 1)
-    gcy = sum(p[1] for p in allpts) / max(len(allpts), 1)
+    def outward(seg: str, end: str, back: float) -> Tuple[float, float]:
+        """
+        Unit vector pointing OUT of `seg` at `end`, measured over `back` pixels
+        of arclength rather than over one bead. Beads sit about 0.4 of a ribbon
+        width apart, so a single-bead tangent is dominated by layout noise;
+        averaging over most of a width gives the direction the ribbon actually
+        appears to be travelling as it arrives at the join.
+        """
+        pts = geom.get(seg) or []
+        if len(pts) < 2:
+            return (1.0, 0.0)
+        chain = pts if end == "e" else list(reversed(pts))
+        tip = chain[-1]
+        ref = chain[0]
+        acc = 0.0
+        for k in range(len(chain) - 1, 0, -1):
+            acc += math.hypot(chain[k][0] - chain[k - 1][0], chain[k][1] - chain[k - 1][1])
+            if acc >= back:
+                ref = chain[k - 1]
+                break
+        dx, dy = tip[0] - ref[0], tip[1] - ref[1]
+        d = math.hypot(dx, dy) or 1.0
+        return (dx / d, dy / d)
 
     def terminal(seg: str, end: str) -> Tuple[float, float]:
         # a tip is joined AT its live end, on the rim of the dot; a short contig
@@ -676,6 +1074,76 @@ def render_bandage_style_svg(
             return dot_centre[seg]
         return geom[seg][0] if end == "s" else geom[seg][-1]
 
+    # ---- one attachment point per link ----
+    # "Hub" is the wrong word for what this is, and using it invites the wrong
+    # reading. Nothing routes THROUGH here. What the graph records is that five
+    # contig ends abut ONE END of contig 9 - its e end - while its other end is
+    # free and carries the telomere array. A path that entered contig 9 would
+    # have to leave by the end it arrived at, which is not a path, so none of
+    # those five can reach any of the others.
+    #
+    # Drawn as five lines converging on a single point, that is unreadable: it
+    # looks like a junction, and a junction is exactly what a reader would then
+    # route contig 3 through to contig 7. So each link gets its OWN attachment
+    # point, spread across the width of contig 9's end face. Every line then
+    # visibly terminates ON contig 9 rather than at a shared node - which is
+    # precisely the claim the graph supports.
+    #
+    # Attachment points are assigned in the order the lines arrive, by angle, so
+    # spreading them cannot introduce a crossing.
+    incoming: Dict[Tuple[str, str], List[Tuple[str, str]]] = defaultdict(list)
+    for l in links:
+        if l.a not in geom or l.b not in geom or l.a == l.b:
+            continue
+        ae = "e" if l.a_orient == "+" else "s"
+        be = "s" if l.b_orient == "+" else "e"
+        incoming[(l.a, ae)].append((l.b, be))
+        incoming[(l.b, be)].append((l.a, ae))
+
+    port: Dict[Tuple[str, str, str, str], Tuple[float, float]] = {}
+    for (seg, end), others in incoming.items():
+        if len(others) < 2:
+            continue
+        hx, hy = terminal(seg, end)
+        ux, uy = outward(seg, end, w * 0.75)
+        # across the end face, not along the contig
+        pxn, pyn = -uy, ux
+        # Ordered by the ANGLE each line arrives at, measured in the end face's
+        # own frame, not by how far along the face it happens to project. Two
+        # lines coming from the same side at different distances project to the
+        # same place and then cross on the way in - which is what put contig 1's
+        # line over contig 3's. Angular order around the face is the standard
+        # fix and is crossing-free for lines that converge on one point.
+        def _arrival(o):
+            tx_, ty_ = terminal(*o)
+            vx_, vy_ = tx_ - hx, ty_ - hy
+            return math.atan2(vx_ * pxn + vy_ * pyn, vx_ * ux + vy_ * uy)
+
+        ranked = sorted(others, key=_arrival)
+        k = len(ranked)
+        # Kept inside the ribbon: half a width is its edge, so 0.34 either side
+        # leaves the outermost line clearly on the contig rather than clipping
+        # its corner.
+        span = min(w * 0.68, w * 0.30 * (k - 1))
+        step_ = span / (k - 1) if k > 1 else 0.0
+        for i, o in enumerate(ranked):
+            off = (i - (k - 1) / 2.0) * step_
+            # Tucked BACK along the contig's own axis rather than left sitting
+            # on the spine's end point. The ribbon is stroked with a round cap
+            # and the polyline is trimmed half a width before stroking, so a
+            # point offset sideways from the spine end falls outside the cap -
+            # which is why the lines stopped short with a sliver of white
+            # between them and contig 9. Connectors are drawn beneath the
+            # contigs, so running them under the cap is invisible and closes
+            # the gap at every offset.
+            port[(seg, end, o[0], o[1])] = (
+                hx + pxn * off - ux * w * 0.55,
+                hy + pyn * off - uy * w * 0.55,
+            )
+
+    def attach(seg: str, end: str, other: Tuple[str, str]) -> Tuple[float, float]:
+        return port.get((seg, end, other[0], other[1])) or terminal(seg, end)
+
     # junction connectors, behind the contigs
     P.append(
         f'<g id="layer-links" fill="none" stroke="{PALETTE["bar_edge"]}" '
@@ -684,23 +1152,51 @@ def render_bandage_style_svg(
     for l in links:
         if l.a not in geom or l.b not in geom or l.a == l.b:
             continue
-        ax, ay = terminal(l.a, "e" if l.a_orient == "+" else "s")
-        bx, by = terminal(l.b, "s" if l.b_orient == "+" else "e")
-        # Bowed, not straight. A junction drawn as a straight line reads as a
-        # ruled edge in a diagram; the contigs around it are all curves, and the
-        # straight lines were the thing making the panel look mechanical. The bow
-        # goes away from the centre of the drawing so connectors at a hub splay
-        # rather than fold over one another.
-        mxx, myy = (ax + bx) / 2.0, (ay + by) / 2.0
-        vx, vy = mxx - gcx, myy - gcy
-        vlen = math.hypot(vx, vy) or 1.0
+        a_end = "e" if l.a_orient == "+" else "s"
+        b_end = "s" if l.b_orient == "+" else "e"
+        ax, ay = attach(l.a, a_end, (l.b, b_end))
+        bx, by = attach(l.b, b_end, (l.a, a_end))
+        # A cubic whose control points lie ONE RIBBON WIDTH beyond each contig
+        # end, along that contig's own final tangent. The connector then leaves
+        # each ribbon in the direction the ribbon was already going, so contig -
+        # connector - contig is a single continuous stroke with no kink at the
+        # join. This is how Bandage draws its edges, and it is the whole reason
+        # its junctions look drawn rather than wired together. See Bandage's
+        # GraphicsItemEdge::calculateAndSetPath():
+        # https://github.com/rrwick/Bandage/blob/main/graph/graphicsitemedge.cpp
+        #
+        # What this replaces: a quadratic bowed away from the drawing's
+        # CENTROID, whose direction depended on where the connector sat in the
+        # picture rather than on which way the contigs pointed. Every sharp
+        # angle at a join came from that, and it was decoration keyed to a
+        # global coordinate - the same objection as the sinusoidal pre-bow.
+        ux, uy = outward(l.a, a_end, w * 0.75)
+        vx, vy = outward(l.b, b_end, w * 0.75)
         chord = math.hypot(bx - ax, by - ay)
-        bow = min(chord * 0.55, w * 2.4)
-        qx, qy = mxx + vx / vlen * bow, myy + vy / vlen * bow
+        ext = min(w, chord / 2.0) if chord > 1e-6 else w
+        c1x, c1y = ax + ux * ext, ay + uy * ext
+        c2x, c2y = bx + vx * ext, by + vy * ext
         P.append(
-            f'<path d="M {ax:.1f} {ay:.1f} Q {qx:.1f} {qy:.1f} {bx:.1f} {by:.1f}" '
-            f'stroke-width="{w * 0.26:.1f}"/>'
+            f'<path d="M {ax:.1f} {ay:.1f} C {c1x:.1f} {c1y:.1f} '
+            f'{c2x:.1f} {c2y:.1f} {bx:.1f} {by:.1f}" '
+            f'stroke-width="{max(w * 0.085, 3.0):.1f}" stroke-opacity="0.85"/>'
         )
+    # Where several connectors land on the SAME end of a contig, mark the point.
+    # Five lines arriving near a short contig read as five lines arriving
+    # somewhere near it, and which end they share is exactly what the reader
+    # needs - edge_9 has all five of its neighbours on one end. Drawn after the
+    # lines so it caps them.
+    ends_here: Dict[Tuple[float, float], int] = defaultdict(int)
+    for l in links:
+        if l.a not in geom or l.b not in geom or l.a == l.b:
+            continue
+        for seg_, end_ in ((l.a, "e" if l.a_orient == "+" else "s"),
+                           (l.b, "s" if l.b_orient == "+" else "e")):
+            px_, py_ = terminal(seg_, end_)
+            ends_here[(round(px_, 1), round(py_, 1))] += 1
+    # No junction dot. It was there to say "these lines meet here", but that is
+    # the very reading the ports exist to remove - the lines do not meet, they
+    # each end on the same contig. A dot re-drew them as one node.
     P.append("</g>")
 
     # contigs, drawn along their polyline
@@ -745,6 +1241,17 @@ def render_bandage_style_svg(
     # labels: the contig number inside the ribbon, coverage beside it
     label_all = len(calls) <= args.graph_label_limit
     placed_labels: List[Tuple[float, float]] = []
+    # Everything already on the page that a depth label must not land on: every
+    # bead of every ribbon, plus the junction points where the connectors meet.
+    # Sampled rather than exact - a label only needs to be clearly off the ink,
+    # not provably disjoint from it.
+    obstacles: List[Tuple[float, float]] = [
+        p for v in geom.values() for p in v
+    ]
+    for v in geom.values():
+        if len(v) >= 2:
+            obstacles.append(v[0])
+            obstacles.append(v[-1])
     P.append(f'<g id="layer-labels" fill="{PALETTE["text"]}">')
     for name in sorted(geom):
         c = by_name[name]
@@ -765,8 +1272,8 @@ def render_bandage_style_svg(
             tlen = math.hypot(tx, ty) or 1.0
             nx, ny = -ty / tlen, tx / tlen
         P.append(
-            f'<text x="{mx:.1f}" y="{my + FS_LABEL * 0.35:.1f}" text-anchor="middle" '
-            f'font-size="{FS_LABEL}" font-weight="700" fill="{_text_on(colour)}">'
+            f'<text x="{mx:.1f}" y="{my + FS_PRIMARY * 0.35:.1f}" text-anchor="middle" '
+            f'font-size="{FS_PRIMARY}" font-weight="700" fill="{_text_on(colour)}">'
             f'{esc(_segment_number(name))}</text>'
         )
         # Coverage is shown for EVERY contig. It used to be suppressed on short
@@ -776,10 +1283,10 @@ def render_bandage_style_svg(
             # Coverage labels crowd badly around a hub, where several short
             # contigs meet. Each label tries a ring of candidate positions and
             # takes the one furthest from the labels already placed.
-            off = w / 2 + FS_SUB + 12
+            off = w / 2 + FS_ANNOT + 12
             best_pt, best_score = None, -1.0
-            for k in range(12):
-                ang = 2 * math.pi * k / 12
+            for k in range(24):
+                ang = 2 * math.pi * k / 24
                 ox_, oy_ = math.cos(ang), math.sin(ang)
                 # bias towards the ribbon's normal, so a label still reads as
                 # belonging to its own contig
@@ -789,15 +1296,28 @@ def render_bandage_style_svg(
                     (math.hypot(cxp - px, cyp - py) for px, py in placed_labels),
                     default=1e6,
                 )
-                score = min(near, 400.0) * bias
+                # ...and away from the DRAWING, not only from other labels. The
+                # old rule dodged labels but not ribbons, so at a hub - where the
+                # contigs converge and there is nothing else to collide with -
+                # the depth label landed squarely on the junction. A hub is
+                # exactly where depth matters most, so it is the worst place to
+                # lose it.
+                clear = min(
+                    (math.hypot(cxp - px, cyp - py) for px, py in obstacles),
+                    default=1e6,
+                )
+                score = min(min(near, clear * 1.4), 400.0) * bias
                 if score > best_score:
                     best_pt, best_score = (cxp, cyp), score
             lx, ly = best_pt  # type: ignore
             placed_labels.append((lx, ly))
+            # Muted, not full-strength. Depth is evidence about a contig, not the
+            # contig's name, and setting it in the same ink as the identity
+            # labels let it compete with them for the reader's first pass.
             P.append(
                 f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
-                f'font-size="{FS_SUB + 5}" font-weight="600" '
-                f'fill="{PALETTE["text"]}">{c.depth:.0f}x</text>'
+                f'font-size="{FS_PRIMARY}" font-weight="600" '
+                f'fill="{PALETTE["muted"]}">{c.depth:.0f}x</text>'
             )
     P.append("</g>")
 

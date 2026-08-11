@@ -6,19 +6,19 @@ detangler reads a genome assembly graph (GFA), classifies every segment from
 graph-intrinsic evidence (length, depth-derived copy number, links,
 circularity, GC, telomere motif arrays), and proposes ranked hypotheses of
 how the contigs resolve into linear chromosomes. It draws the result as a
-paired figure: the assembly graph on the left, the inferred chromosomes on
-the right, one colour per segment in both panels. No expected karyotype is
+paired figure: the assembly graph on the left, the inferred chromosomes on the
+right, one colour per segment in both panels. No expected karyotype is
 needed — the chromosome count is inferred from the structure of the graph.
 
 ## What it looks like
 
 Real output, on a Flye assembly of *Fusarium graminearum* (ONT, ~22x). Eleven
-graph segments on the left; on the right, the molecules they resolve into, each
-with the repeats the graph attaches to its ends. A segment keeps the same colour
-and the same drawn size in both panels.
+graph segments on the left; on the right, the molecules they resolve into,
+smallest to largest, each with the repeats the graph attaches to its ends. A
+segment keeps the same colour in both panels.
 
 ![Paired figure: assembly graph resolved into a chromosome
-hypothesis](detangler_figure_v1.svg)
+hypothesis](detangler_figure_v3.svg)
 
 A demo on a modest assembly, not a benchmark. What the tool infers depends on
 how well the graph is resolved in the first place.
@@ -102,8 +102,33 @@ The assembly graph panel follows the approach used by
 [Bandage](https://github.com/rrwick/Bandage) (Wick et al. 2015): each contig is
 laid out as a chain of many small nodes rather than as a single rigid edge, so
 that a contig's drawn length tracks its sequence length and long contigs can
-curve around their neighbours. That idea is reimplemented here in Python — no
-Bandage code is used, and detangler is not derived from it.
+curve around their neighbours. Bandage's edge construction is followed too —
+each control point one contig-width beyond the end, along that contig's own
+tangent, so a junction is continuous with the ribbons it joins. Both ideas are
+reimplemented here in Python; no Bandage code is used, and detangler is not
+derived from it.
+
+Also drawn on for the graph layout:
+
+- Initial placement comes from [Graphviz](https://graphviz.org) `sfdp` — Yifan
+  Hu's multilevel force-directed algorithm
+  ([paper](http://yifanhu.net/PUB/graph_draw_small.pdf)). Optional; there is a
+  fallback.
+- Angles at a junction are spread to a minimum gap by isotonic regression, using
+  the pool-adjacent-violators algorithm of
+  [Ayer et al. 1955](https://projecteuclid.org/euclid.aoms/1177728423).
+- Contig ends are held at a fixed direction as well as a fixed position, so a
+  contig settles as a minimum-bending-energy curve rather than a circular arc.
+  Framing from [Levien & Séquin, *Interpolating splines: which is the fairest of
+  them all?*](https://people.eecs.berkeley.edu/~sequin/PAPERS/2009_CAD_Levien_Sequin.pdf)
+  (CAD & Applications 6, 2009).
+- Each component is rotated to fill the panel, as Bandage does with
+  `stepsForRotatingComponents`.
+
+Segment colours are ColorBrewer's *Paired* qualitative scheme (Cynthia Brewer,
+[colorbrewer2.org](https://colorbrewer2.org/#type=qualitative&scheme=Paired&n=10)),
+reordered per figure so that segments drawn touching are as far apart in colour
+as possible.
 
 Co-built with [Claude](https://claude.ai).
 

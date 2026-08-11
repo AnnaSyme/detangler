@@ -662,10 +662,26 @@ class Model:
         # {segment: (places drawn, copy number)} where the depth does not support
         # the number of places the hypothesis puts it
         self.overplaced: Dict[str, Tuple[int, float]] = {}
+        # what the USER said to expect, if anything - never inferred
+        self.expected_chromosomes: Optional[int] = None
+        # the same contradiction the other way round: far more copies by depth
+        # than there are places to put them, which is what an array looks like
+        self.underdrawn: Dict[str, Tuple[int, float]] = {}
         self.title: str = "Assembly ideogram"
         # graph-first mode
         self.segment_calls: List["SegmentCall"] = []
         self.hypotheses: List["Hypothesis"] = []
+        # How far below the best a hypothesis may score and still count as
+        # "the graph cannot tell these apart". Set from --speculative-penalty,
+        # because that is exactly the amount a legitimate-but-unproven join is
+        # docked: anything that would OVERTAKE the best if its speculative join
+        # were confirmed belongs in the range, and anything further down does
+        # not. Without this the range was whatever survived --max-hypotheses.
+        self.range_slack: float = 1.5
+        # Height of the tallest chromosome bar, in px. The paired figure sets
+        # this so the chromosome row fills the triangle it is given rather than
+        # sitting in a shallow strip along the bottom.
+        self.max_bar_h: float = 0.0
         self.baseline_depth: Optional[float] = None
         self.baseline_basis: str = ""
         self.chosen_hypothesis: int = 0
@@ -709,7 +725,10 @@ class Model:
             h
             for h in self.hypotheses
             if any("score within" in c for c in h.contradicting)
-            or any(j.speculative for j in h.joins)
+            or (
+                any(j.speculative for j in h.joins)
+                and best.score - h.score <= self.range_slack
+            )
         ] or [best]
         counts = [len(h.chains) for h in near] + [len(best.chains)]
         return len(best.chains), min(counts), max(counts)
@@ -1099,6 +1118,7 @@ def model_from_hypothesis(
         "tandem_array": "tandem_array",
         "at_rich": "at_rich_region",
         "low_coverage": "low_coverage_region",
+        "haplotig": "low_coverage_region",
     }
     def facing_side(seg: str, other: Optional[str]) -> Optional[str]:
         """The physical end of seg that carries a link to other, if unambiguous."""
@@ -1214,26 +1234,43 @@ def model_from_hypothesis(
             for seg, _col, _length in side:
                 placements[seg] += 1
 
+    # The check reads both ways. Drawn in more places than the depth supports is
+    # one contradiction; carrying the depth of sixty-five copies while being
+    # drawn once is the other, and the figure used to say nothing at all about
+    # it. Neither is resolved here - the graph does not say where the missing
+    # copies go - but a figure that appears to claim a copy number has to
+    # withdraw the claim in words when its own depth disagrees.
     for seg, n in sorted(placements.items()):
-        if n <= 1 or seg not in by_name:
+        if seg not in by_name:
             continue
         call = by_name[seg]
         cn = call.copy_number
-        if cn is None or cn + args.placement_tolerance >= n:
+        if cn is None:
             continue
-        gc_note = ""
-        if call.gc is not None and call.gc < 0.25:
-            gc_note = (
-                f" Its GC is {call.gc * 100:.0f}%, and depth over sequence that "
-                f"AT-rich is often understated, so the copy number may be the "
-                f"unreliable half of this."
+        if n > 1 and cn + args.placement_tolerance < n:
+            gc_note = ""
+            if call.gc is not None and call.gc < 0.25:
+                gc_note = (
+                    f" Its GC is {call.gc * 100:.0f}%, and depth over sequence that "
+                    f"AT-rich is often understated, so the copy number may be the "
+                    f"unreliable half of this."
+                )
+            model.overplaced[seg] = (n, cn)
+            model.warnings.append(
+                f"{seg} is drawn in {n} places but its depth implies about "
+                f"{cn:.1f} copies ({call.depth:.0f}x). Either it does not sit in all "
+                f"of them, or its depth is not a fair measure of its abundance.{gc_note}"
             )
-        model.overplaced[seg] = (n, cn)
-        model.warnings.append(
-            f"{seg} is drawn in {n} places but its depth implies about "
-            f"{cn:.1f} copies ({call.depth:.0f}x). Either it does not sit in all "
-            f"of them, or its depth is not a fair measure of its abundance.{gc_note}"
-        )
+        elif cn > n * args.overcopy_factor:
+            depth_note = f" ({call.depth:.0f}x)" if call.depth is not None else ""
+            model.underdrawn[seg] = (n, cn)
+            model.warnings.append(
+                f"{seg} has about {cn:.1f} copies by depth{depth_note} but is drawn "
+                f"in {n} place{'s' if n != 1 else ''}. It is likely a tandem array "
+                f"or a collapsed repeat; the figure shows where it attaches, not "
+                f"how many copies there are."
+            )
 
+    model.expected_chromosomes = getattr(args, "expected_chromosomes", None)
     model.title = args.title or "Chromosome hypothesis from the assembly graph"
     return model

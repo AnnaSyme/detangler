@@ -88,6 +88,17 @@ def human_bp(n: float) -> str:
     return f"{int(n)} bp"
 
 
+def figure_bp(n: float) -> str:
+    """Size as it appears ON a figure: whole units, no decimals."""
+    if n >= 1e9:
+        return f"{n / 1e9:.0f} Gb"
+    if n >= 1e6:
+        return f"{n / 1e6:.0f} Mb"
+    if n >= 1e3:
+        return f"{n / 1e3:.0f} kb"
+    return f"{int(n)} bp"
+
+
 def median(values: Seq[float]) -> float:
     vals = sorted(v for v in values if v is not None)
     if not vals:

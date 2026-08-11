@@ -262,12 +262,36 @@ def call_segments(
             c.cls = "repeat"
             r.append(f"copy number {cn:.1f} (>= {args.repeat_min_copy}) relative to single copy")
         elif cn is not None and cn < args.low_coverage_max_copy:
-            c.cls = "low_coverage"
-            r.append(
-                f"copy number {cn:.2f} (< {args.low_coverage_max_copy}): below single copy, so "
-                f"not simply a low-confidence unique segment - candidates include a haplotype-"
-                f"specific region, contamination, or a real sub-stoichiometric molecule"
+            # Around HALF the baseline is not "foreign" - in a primary assembly
+            # it is the expected depth of a haplotig the purge step left behind,
+            # and that is the commonest thing in the file. Calling it
+            # contamination was the tool's least defensible rule. What decides
+            # the reading is not the organism's ploidy but what the ASSEMBLER
+            # emitted, which is why --assembly-type is a declaration.
+            atype = getattr(args, "assembly_type", "primary")
+            half_band = args.haplotig_band
+            looks_haplotig = (
+                atype in ("primary", "phased")
+                and half_band[0] <= cn <= half_band[1]
+                and c.length >= args.haplotig_min_length
             )
+            if looks_haplotig:
+                c.cls = "haplotig"
+                r.append(
+                    f"copy number {cn:.2f}, about half the single-copy baseline, over "
+                    f"{human_bp(c.length)}. In a {atype} assembly that is what an unpurged "
+                    f"HAPLOTIG looks like - the second allele of a heterozygous region that "
+                    f"the assembler kept but did not merge. It is not evidence of "
+                    f"contamination, and it should not be counted as a chromosome of its own"
+                )
+            else:
+                c.cls = "low_coverage"
+                r.append(
+                    f"copy number {cn:.2f} (< {args.low_coverage_max_copy}): below single copy, "
+                    f"so not simply a low-confidence unique segment - candidates include a "
+                    f"haplotype-specific region, contamination, or a real sub-stoichiometric "
+                    f"molecule"
+                )
         elif c.length >= args.backbone_min_length and (cn is None or args.backbone_copy_range[0] <= cn <= args.backbone_copy_range[1]):
             c.cls = "backbone"
             r.append(

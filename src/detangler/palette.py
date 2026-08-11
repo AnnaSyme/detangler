@@ -41,6 +41,7 @@ CLASS_COLOUR = {
     "tandem_array": "#b5487f",
     "organelle_candidate": "#3f7d5c",
     "low_coverage": "#a8a8a8",
+    "haplotig": "#b0a0c0",
     "short_single_copy": "#8fa8bd",
     "unclassified": "#cfcfcf",
 }
@@ -51,25 +52,28 @@ BACKBONE_COLOURS = ["#4a7ba7", "#5f9e6e", "#a87f4a", "#7d6ba7", "#3f8f9e"]
 # colour alone. Class colours are NOT used in the figures any more; CLASS_COLOUR
 # survives only for the text report.
 SEGMENT_COLOURS = [
-    # Vibrant but harmonious: saturated enough to be easy to follow between the
-    # two panels, without the clashing you get from a maximally-distinct set.
-    "#1982C4",  # azure
-    "#FF595E",  # coral
-    "#8AC926",  # lime
-    "#FFCA3A",  # gold
-    "#6A4C93",  # violet
-    "#00BBF9",  # sky
-    "#F15BB5",  # pink
-    "#2A9D8F",  # teal
-    "#E36414",  # burnt orange
-    "#9B5DE5",  # purple
-    "#00C49A",  # mint
-    "#C1121F",  # crimson
-    "#4361EE",  # indigo
-    "#B5179E",  # magenta
-    "#57CC99",  # spring green
-    "#F9844A",  # tangerine
+    # ColorBrewer "Paired", first 10 of 12 (Cynthia Brewer).
+    # https://colorbrewer2.org/#type=qualitative&scheme=Paired&n=10
+    # A qualitative scheme, so it is built for exactly this job: telling
+    # categories apart, with no implied order between them.
+    #
+    # It is made of LIGHT/DARK TWINS - pale blue beside strong blue, pale green
+    # beside strong green - which is the opposite of what this figure wants,
+    # since colour is the only thing tying a node in the graph panel to a block
+    # in the chromosome panel. The greedy maximum-minimum separation pass below
+    # pulls the twins apart, so a contig is never drawn beside its own near-twin.
+    "#a6cee3",
+    "#1f78b4",
+    "#b2df8a",
+    "#33a02c",
+    "#fb9a99",
+    "#e31a1c",
+    "#fdbf6f",
+    "#ff7f00",
+    "#cab2d6",
+    "#6a3d9a",
 ]
+
 UNPLACED_GREY = "#b8b8b8"
 
 CLASS_LABEL = {
@@ -79,6 +83,7 @@ CLASS_LABEL = {
     "tandem_array": "tandem array",
     "organelle_candidate": "organelle candidate",
     "low_coverage": "low coverage / foreign",
+    "haplotig": "unpurged haplotig",
     "short_single_copy": "short, single copy",
     "unclassified": "unclassified",
 }
@@ -125,7 +130,11 @@ def assign_segment_colours(
     for i, c in enumerate(ordered):
         base = SEGMENT_COLOURS[i % len(SEGMENT_COLOURS)]
         cycle = i // len(SEGMENT_COLOURS)
-        colours[c.name] = base if cycle == 0 else _lighten(base, 0.26 * cycle)
+        # Past the end of the palette, shift each colour AWAY from mid-lightness
+        # rather than always lightening it. Half of Paired is already pale, and
+        # lightening a pale colour twice takes it to something indistinguishable
+        # from the page.
+        colours[c.name] = base if cycle == 0 else _shade(base, 0.24 * cycle)
 
     if not links:
         return colours
@@ -172,6 +181,25 @@ def _segment_number(name: str) -> str:
     """The digits in a segment name: 'edge_11' -> '11'. Falls back to the name."""
     m = re.findall(r"\d+", name)
     return m[-1] if m else name
+
+
+def _shade(hex_colour: str, amount: float) -> str:
+    """
+    Push a colour away from mid-lightness: darken it if it is already light,
+    lighten it if it is dark. Used only when there are more segments than
+    palette entries, where the point is that the repeat is TELLABLE from the
+    original, not that it looks any particular way.
+    """
+    r, g, b = (int(hex_colour[i : i + 2], 16) for i in (1, 3, 5))
+    lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+    return _darken(hex_colour, amount) if lum > 0.5 else _lighten(hex_colour, amount)
+
+
+def _darken(hex_colour: str, amount: float) -> str:
+    amount = min(max(amount, 0.0), 0.8)
+    r, g, b = (int(hex_colour[i : i + 2], 16) for i in (1, 3, 5))
+    r, g, b = (int(v * (1.0 - amount)) for v in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _lighten(hex_colour: str, amount: float) -> str:

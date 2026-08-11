@@ -10,6 +10,7 @@ import os
 import re
 import sys
 from collections import defaultdict
+from statistics import median
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Iterable, List, Optional, Sequence as Seq, Set, Tuple
 
@@ -229,6 +230,46 @@ def enumerate_hypotheses(
     backbone = [c.name for c in calls if c.cls == "backbone"]
     if not backbone:
         return []
+    # ---- centromere-like bridges -------------------------------------
+    # A regional centromere in many filamentous fungi (and some plants) is a
+    # long, markedly AT-rich block. It assembles badly: coverage drops, the
+    # assembler cannot read through it, and it lands in the graph as a
+    # low-depth segment with links on ONE side only. That last property is
+    # exactly what makes a join through it "speculative" - so for this class of
+    # segment, the missing through-path is the EXPECTED observation rather than
+    # evidence against the join. Recognising the pattern lets the tool propose
+    # the join on its own, instead of needing to be told the chromosome count.
+    #
+    # This is a hypothesis-raiser, never a diagnosis. AT-rich also describes
+    # organelle-derived sequence, repeat families and plain compositional bias,
+    # and centromeres are not AT-rich in every lineage. Nothing here calls the
+    # segment a centromere; it only stops the tool from dismissing the join.
+    gc_vals = [c.gc for c in calls if c.cls == "backbone" and c.gc is not None]
+    baseline_gc = median(gc_vals) if gc_vals else None
+    centromere_like: Dict[str, float] = {}
+    if baseline_gc is not None:
+        for c in calls:
+            if c.gc is None or c.length < args.centromere_min_length:
+                continue
+            deficit = baseline_gc - c.gc
+            if deficit < args.at_rich_delta:
+                continue
+            k = c.copy_number
+            if k is None or k >= 1.5:
+                continue  # a multi-copy block could sit anywhere; no constraint
+            centromere_like[c.name] = deficit
+    bridging = {v for j in joins for v in j.via}
+    centromere_like = {k: v for k, v in centromere_like.items() if k in bridging}
+    if centromere_like:
+        log.info(
+            "AT-rich low-copy bridge candidate(s), treated as possible centromeric "
+            "sequence when they join exactly two backbone ends: "
+            + ", ".join(
+                f"{k} (GC {baseline_gc - v:.0%} vs baseline {baseline_gc:.0%})"
+                for k, v in sorted(centromere_like.items())
+            )
+        )
+
     telomeric = telomeric_segments(calls, args)
     if telomeric:
         log.info(
@@ -295,19 +336,34 @@ def enumerate_hypotheses(
             continue  # not a valid set of disjoint linear paths
         score, sup, con, res, capped, opened = _score_hypothesis(
             chains, chosen, lengths, cn, cls, connector_reach, alt_count, alt_routes,
-            adj, telomeric, args, end_adj
+            adj, telomeric, args, end_adj, centromere_like
         )
         spec = [j for j in chosen if j.speculative]
         if spec:
             # not established by the graph, so it must not be allowed to win on
             # score alone; it stays in the list, clearly labelled
-            score -= args.speculative_penalty * len(spec)
             for j in spec:
-                con = list(con) + [
-                    f"the join {j.a} - {j.b} is NOT supported by a traversable path: both "
-                    f"segments simply end in {j.via[0]}, which has links on one side only. "
-                    f"Resolving it needs evidence from outside this graph."
-                ]
+                # The penalty exists because "no traversable path" normally means
+                # the graph does not support the join. For an AT-rich centromeric
+                # block the assembler is EXPECTED to fail to read through, so the
+                # one-sidedness is explained rather than damning. Discounted, not
+                # waived - the pattern is suggestive, not diagnostic.
+                mid = j.via[0] if j.via else None
+                if mid in centromere_like:
+                    score -= args.speculative_penalty * args.centromere_speculative_discount
+                    con = list(con) + [
+                        f"the join {j.a} - {j.b} runs through {mid}, which has links on one "
+                        f"side only, so this graph does not establish it. That is the "
+                        f"expected appearance of an AT-rich centromeric block, which is why "
+                        f"it is still ranked, but it remains unproven here."
+                    ]
+                else:
+                    score -= args.speculative_penalty
+                    con = list(con) + [
+                        f"the join {j.a} - {j.b} is NOT supported by a traversable path: both "
+                        f"segments simply end in {j.via[0]}, which has links on one side only. "
+                        f"Resolving it needs evidence from outside this graph."
+                    ]
                 res = list(res) + [
                     f"long reads spanning {j.via[0]}, or Hi-C contact between {j.a} and "
                     f"{j.b}, would settle whether they join"
@@ -400,8 +456,9 @@ def _linear_forest(vertices: List[str], edges: List[Join]) -> Optional[List[List
 
 def _score_hypothesis(
     chains, chosen, lengths, cn, cls, connector_reach, alt_count, alt_routes,
-    adj, telomeric, args, end_adj=None
+    adj, telomeric, args, end_adj=None, centromere_like=None
 ):
+    centromere_like = centromere_like or {}
     score = 0.0
     sup: List[str] = []
     con: List[str] = []
@@ -501,6 +558,18 @@ def _score_hypothesis(
                     f"{len(reach)} backbone segment(s), so it is a unique bridge rather than a "
                     f"repeat that could sit anywhere"
                 )
+                if v in centromere_like and len(reach) == 2:
+                    score += args.centromere_bonus
+                    detail.append(
+                        f"{v} is {human_bp(lengths.get(v, 0))} and markedly AT-rich "
+                        f"({centromere_like[v]:.0%} below the assembly's GC baseline), and it "
+                        f"bridges exactly two backbone ends. In lineages whose centromeres are "
+                        f"long AT-rich regions - many filamentous fungi among them - that is "
+                        f"the shape of a CENTROMERE sitting between the two arms of one "
+                        f"chromosome, and it also explains the low depth. Treat it as a "
+                        f"hypothesis to test, not a call: AT-rich equally describes "
+                        f"organelle-derived sequence, a repeat family, or compositional bias"
+                    )
             elif c is not None and 1.5 <= c <= 3.5 and len(reach) <= 2:
                 score += 0.45
                 detail.append(

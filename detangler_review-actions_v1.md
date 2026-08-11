@@ -13,7 +13,9 @@ constant to neutral and the answer reverts to 5 molecules. The tie threshold is
 them - and then the first line of the same report says "This assembly resolves
 into 4 linear molecules".
 
-Do: make the headline say "4 or 5, and the graph cannot choose". Print each
+PARTLY DONE 11 Aug: the summary now leads with the range whenever the top two
+score within `--tie-threshold`, then names the drawn reading and by how little
+it won. STILL TO DO: Print each
 hypothesis's score with and without the centromere terms so the rule's
 contribution is visible. Delete the word "validated" from
 `detangler_enhancements_v1.md` - one free parameter fitted to one known answer
@@ -32,31 +34,32 @@ with it. Do not claim the graph establishes the join - it does not, both
 attachments are to edge_8's same end - and do not call edge_8 a centromere. All
 that is known is that a 51 kb 86%-AT block sits at the junction.
 
-**3. The report lies when `--expected-chromosomes` is supplied.**
+**3. DONE 11 Aug. The report lied when `--expected-chromosomes` was supplied.**
 `report.py:190` prints "No expected karyotype was used to reach that"
 unconditionally, while `hypotheses.py:512` has already applied
-`score -= 3.0 * abs(n - expected)`. Make the sentence conditional and state the
-penalty when it applied.
+`score -= 3.0 * abs(n - expected)`. The sentence is now conditional and names the penalty when it applied.
 
 ## Correctness
 
-**4. A direct GFA link scores net NEGATIVE.** `hypotheses.py:544` charges
+**4. DONE 11 Aug. A direct GFA link scored net NEGATIVE.** `hypotheses.py:544` charges
 `--join-cost` 0.6 and line 546 refunds only 0.3, so an unambiguous direct link
 nets -0.3 while a speculative one-sided AT-rich bridge earns +1.3. A 25-contig
-chain joined by 24 plain links reports 25 separate molecules. The most
-trustworthy evidence a graph offers cannot carry a join. Invert this.
+chain joined by 24 plain links reports 25 separate molecules. New `--direct-link-bonus` (0.55) on top of cancelling the join cost. The
+25-contig chain now reports 7, the residue being the `--max-join-edges` cap.
 
-**5. The one-sided contradiction text is wrong for half its cases.**
+**5. DONE 11 Aug. The one-sided contradiction text was wrong for half its
+cases.**
 `hypotheses.py:364` hardcodes "which has links on one side only". edge_3 has
 links on both ends; the real reason its join fails is that both partners attach
-to the SAME end. `cli.py:269` already says this correctly. Use one explanation.
+to the SAME end. The message now distinguishes the two failures.
 
-**6. Telomere credit is unbounded by copy number.** `hypotheses.py:488` credits
+**6. DONE 11 Aug. Telomere credit was unbounded by copy number.** `hypotheses.py:488` credits
 edge_9 - one segment at copy number 1.95 - with capping four molecule ends, 4.8
 of hypothesis 1's 5.50 total. Five backbone ends attach to its single 'e' end;
 if all were real you would expect ~95x depth, and the observed depth is 37x.
-`model.py:1250` notices and warns; the scorer never sees it. Cap a segment's
-telomere credit at its copy number.
+`chain_end_status` now returns which segment earned each cap; the score counts
+at most `round(copy number)` of them and the rest become open ends, with the
+shortfall stated. Hypothesis 1 fell 5.50 to 3.10, hypothesis 2 4.80 to 2.40.
 
 **7. Circular replicons are outside the model and the tool does not say so.** On
 a bacterial GFA - 5 Mb circular chromosome plus a 60 kb plasmid - the summary
@@ -93,7 +96,9 @@ edge_8 "foreign" in the segment table and a candidate centromere in the
 hypothesis section. "sub-baseline depth" carries the same information without
 the accusation.
 
-**13. Stale rationale docs.** `chromviz_method-rationale_v1.md` says
+**13. Stale AND duplicated docs.** `chromviz_method-rationale_v1.md` and
+`chromviz_blast-enhancements_v1.md` are byte-identical leftovers from before
+the rename and should be deleted. Separately: `chromviz_method-rationale_v1.md` says
 "Centromeres are not called"; the shipped report says the opposite. It also
 attributes a telomere array to edge_8, which has none. Delete or date-stamp.
 

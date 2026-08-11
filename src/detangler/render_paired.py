@@ -44,6 +44,7 @@ from .render_common import (
     BAR_W,
     GAP,
     FS_HEADING,
+    FS_PRIMARY,
     _place_svg,
     _svg_height,
     _svg_width,
@@ -239,7 +240,17 @@ def render_paired_svg(
     # the chromosome panel narrow and deep, so putting them side by side left
     # most of the canvas empty and forced everything to be shrunk to fit. One
     # above the other fills the space, which means both can be drawn larger.
-    top = FS_HEADING * 1.5 + 34.0
+    # A subheading only when the figure was TOLD something. The default run
+    # infers the chromosome count from the graph alone, and saying so would be
+    # noise; but once --expected-chromosomes is supplied the drawing contains
+    # ghost slots that exist because of a number the reader cannot see, and the
+    # figure has to name it.
+    expected_n = getattr(model, "expected_chromosomes", None)
+    sub_label = (
+        f"given {expected_n} expected chromosome{'s' if expected_n != 1 else ''}"
+        if expected_n else ""
+    )
+    top = FS_HEADING * 1.5 + 34.0 + (FS_PRIMARY + 12.0 if sub_label else 0.0)
     gap = PAIR_GUTTER * 0.35
 
     # SIDE BY SIDE: graph on the left, chromosomes on the right.
@@ -300,7 +311,9 @@ def render_paired_svg(
         f'width="{width - 2 * BORDER_PAD:.0f}" height="{height - 2 * BORDER_PAD:.0f}" '
         f'rx="10" fill="none" stroke="{PALETTE["muted"]}" stroke-width="2" '
         f'stroke-dasharray="6 7" stroke-opacity="0.75"/>',
-        f'<text x="{width / 2:.0f}" y="{top + 6:.0f}" text-anchor="middle" '
+        f'<text x="{width / 2:.0f}" '
+        f'y="{top + 6 - (FS_PRIMARY + 12.0 if sub_label else 0.0):.0f}" '
+        f'text-anchor="middle" '
         f'font-size="{FS_HEADING * 1.5:.0f}" font-weight="700" '
         f'fill="{PALETTE["text"]}">{esc(pair_label)}</text>',
     ]
@@ -312,6 +325,12 @@ def render_paired_svg(
     else:
         P.append(_place_svg(graph_svg, 0, top))
     P.append(_place_svg(ideo_svg, ideo_x, ideo_y, scale=ideo_scale))
+    if sub_label:
+        P.append(
+            f'<text x="{width / 2:.0f}" y="{top + 4:.0f}" text-anchor="middle" '
+            f'font-size="{FS_PRIMARY}" font-weight="500" '
+            f'fill="{PALETTE["muted"]}">{esc(sub_label)}</text>'
+        )
     P.append("</svg>")
     return "\n".join(P)
 

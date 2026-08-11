@@ -2,10 +2,14 @@
 
 Turn a genome assembly graph into a chromosome hypothesis.
 
-detangler reads a genome assembly graph (GFA), classifies every segment from
-graph-intrinsic evidence (length, depth-derived copy number, links,
-circularity, GC, telomere motif arrays), and proposes ranked hypotheses of
-how the contigs resolve into linear chromosomes. It draws the result as a
+detangler reads a genome assembly graph (GFA), classifies every segment, and
+proposes ranked hypotheses of how the contigs resolve into linear chromosomes.
+The graph on its own is enough: length, depth-derived copy number, links,
+circularity, GC and telomere motif arrays all come out of the GFA. Outside
+evidence is optional and folded in when given — read coverage, Flye's
+`assembly_info.txt`, alignments, annotation, BLAST hits — as is
+`--assembly-type`, which tells the tool what the assembler produced so it can
+read depth correctly. It draws the result as a
 paired figure: the assembly graph on the left, the inferred chromosomes on the
 right, one colour per segment in both panels. No expected karyotype is
 needed — the chromosome count is inferred from the structure of the graph.
@@ -22,6 +26,43 @@ hypothesis](detangler_figure_v3.svg)
 
 A demo on a modest assembly, not a benchmark. What the tool infers depends on
 how well the graph is resolved in the first place.
+
+### Checking against a karyotype you already believe
+
+If you know — or suspect — how many chromosomes there should be, pass
+`--expected-chromosomes N`. The figure then shows the shortfall rather than
+leaving you to count bars: every chromosome the graph did not produce gets a
+dashed empty slot labelled *not found*, and a subheading names the number the
+figure was given.
+
+```
+python detangler.py --gfa assembly_graph.gfa --expected-chromosomes 6 \
+    --out-dir results --prefix myassembly
+```
+
+![The same assembly, told to expect six
+chromosomes](detangler_figure_v3_expected6.svg)
+
+Two things are worth understanding before you read this as a verdict.
+
+**The flag is not a neutral overlay — it changes the answer.** Compare the two
+figures above. Left to itself the tool asserts a join through the AT-rich
+segment 8 and reports four chromosomes, with chr 1 built from contigs 2 + 8 + 7.
+Told to expect six, it reports five separate molecules: leaving contigs apart
+now scores better than joining them, so segment 8 falls back to being a cap on
+the end of chr 5 rather than a centromere inside chr 1. Expecting more
+chromosomes makes the tool more conservative about merging, which is the
+intended behaviour but does mean you cannot use the flag to check a count
+without also perturbing the inference that produced it.
+
+**An empty slot means "the graph did not produce this", not "this is missing
+from the genome".** The commonest reason a chromosome fails to appear is that
+the assembler left it in pieces the graph gives no way to join — the tool says
+so in the report — not that any sequence is absent. Reading a dashed slot as a
+lost chromosome is the mistake this drawing most invites.
+
+Nothing about the count is required. Without the flag the chromosome count is
+inferred from the graph alone, which is the mode the tool is built around.
 
 ## How to run
 

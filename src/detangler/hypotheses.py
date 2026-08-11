@@ -9,6 +9,7 @@ import math
 import os
 import re
 import sys
+import heapq
 from collections import Counter, defaultdict
 from statistics import median
 from dataclasses import dataclass, field, asdict
@@ -340,7 +341,17 @@ def enumerate_hypotheses(
         for v in j.via
     }
 
-    results: List[Hypothesis] = []
+    # Keep only the best few, not all of them. Every Hypothesis holds a full
+    # linear forest over the backbone, so on a large graph `results` is
+    # (number of valid masks) x (number of backbone segments) strings. On a
+    # 2,991-segment Eucalyptus repeat graph with 18 join edges that exhausted
+    # 3 GB and the process was killed with no message at all - the tool simply
+    # vanished. Nothing downstream ever looks past `max_hypotheses`, so a
+    # bounded heap gives the same answer in constant memory.
+    keep_n = max(args.max_hypotheses * 6, 60)
+    heap: List[Tuple[float, int, int, Hypothesis]] = []
+    n_valid = 0
+    seq = 0
     n_edges = len(edges)
     for mask in range(1 << n_edges):
         chosen = [edges[i] for i in range(n_edges) if mask >> i & 1]
@@ -396,10 +407,19 @@ def enumerate_hypotheses(
                     f"long reads spanning {j.via[0]}, or Hi-C contact between {j.a} and "
                     f"{j.b}, would settle whether they join"
                 ]
-        results.append(
-            Hypothesis(0, chains, chosen, score, sup, con, res, capped, opened)
-        )
-    results.sort(key=lambda h: (-h.score, len(h.joins)))
+        hyp = Hypothesis(0, chains, chosen, score, sup, con, res, capped, opened)
+        n_valid += 1
+        seq += 1
+        # Ordering matches the old `sort(key=lambda h: (-h.score, len(h.joins)))`:
+        # higher score first, then fewer joins. The heap is a MIN-heap, so the
+        # worst by that ordering is what gets dropped.
+        entry = (score, -len(chosen), -seq, hyp)
+        if len(heap) < keep_n:
+            heapq.heappush(heap, entry)
+        elif entry > heap[0]:
+            heapq.heapreplace(heap, entry)
+
+    results = [e[3] for e in sorted(heap, reverse=True)]
     for i, h in enumerate(results[: args.max_hypotheses], 1):
         h.rank = i
     top = results[: args.max_hypotheses]
@@ -416,8 +436,8 @@ def enumerate_hypotheses(
         for h in tied:
             h.contradicting.insert(0, note)
     log.info(
-        f"{len(results)} valid chromosome hypotheses; reporting the top "
-        f"{min(len(results), args.max_hypotheses)}"
+        f"{n_valid} valid chromosome hypotheses; reporting the top "
+        f"{min(n_valid, args.max_hypotheses)}"
     )
     return top
 

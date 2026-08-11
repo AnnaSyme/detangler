@@ -95,6 +95,11 @@ from .demo import (
 
 
 
+# A graph this size is outside what the tool is for. Not a refusal - it still
+# runs - but the user should hear it before the run, not after.
+SCOPE_SEGMENT_WARN = 400
+
+
 def build_model(args, log: Log) -> Tuple[Model, Dict[str, str]]:
     model = Model()
     model.settings = {
@@ -126,6 +131,22 @@ def build_model(args, log: Log) -> Tuple[Model, Dict[str, str]]:
         segs, links = parse_gfa(args.gfa, log, args.assembler)
         model.inputs["gfa"] = args.gfa
         log.info(f"graph: {len(segs)} segments, {len(links)} links")
+        # This tool is built for tens of segments, not thousands - see "What this is
+        # not built for" in the README. Say so at the start of the run rather than
+        # letting the user discover it from a 218-bar figure twenty minutes later.
+        # Measured: 716 segments 41 s, 2,991 segments 2m25s. An 11,194-segment
+        # Eucalyptus repeat graph needs more memory than a 3 GB machine has, at the
+        # parse step, before any of this.
+        if len(segs) > SCOPE_SEGMENT_WARN:
+            log.warn(
+                f"{len(segs)} segments is well beyond what this tool is designed for "
+                f"(tens, not thousands). It will run, but expect one molecule per "
+                f"backbone contig rather than one per chromosome: a graph this "
+                f"fragmented has no path from contig scale to chromosome scale, so "
+                f"the molecule count will describe the assembly, not the karyotype. "
+                f"--max-graph-nodes keeps the picture readable; it does not make the "
+                f"inference meaningful at this scale."
+            )
 
     agp = parse_agp(args.agp, log) if args.agp else []
     paf = parse_paf(args.paf, args.min_paf_block, log) if args.paf else []
@@ -219,6 +240,22 @@ def build_model_graph_first(args, log: Log) -> Tuple[Model, Dict[str, str]]:
     """
     segs, links = parse_gfa(args.gfa, log, args.assembler)
     log.info(f"graph: {len(segs)} segments, {len(links)} links")
+    # This tool is built for tens of segments, not thousands - see "What this is
+    # not built for" in the README. Say so at the start of the run rather than
+    # letting the user discover it from a 218-bar figure twenty minutes later.
+    # Measured: 716 segments 41 s, 2,991 segments 2m25s. An 11,194-segment
+    # Eucalyptus repeat graph needs more memory than a 3 GB machine has, at the
+    # parse step, before any of this.
+    if len(segs) > SCOPE_SEGMENT_WARN:
+        log.warn(
+            f"{len(segs)} segments is well beyond what this tool is designed for "
+            f"(tens, not thousands). It will run, but expect one molecule per "
+            f"backbone contig rather than one per chromosome: a graph this "
+            f"fragmented has no path from contig scale to chromosome scale, so "
+            f"the molecule count will describe the assembly, not the karyotype. "
+            f"--max-graph-nodes keeps the picture readable; it does not make the "
+            f"inference meaningful at this scale."
+        )
 
     seq_by_segment = read_segment_sequences(args.gfa, args.segment_fasta, log)
     contigs = parse_flye_info(args.flye_info, log) if args.flye_info else []
@@ -475,10 +512,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="how far in from each end of a segment to look for a telomere repeat "
                         "array. A telomere that is not at an end is not a telomere "
                         "(default 20k)")
-    g.add_argument("--min-telomere-units", type=int, default=3,
-                   help="consecutive perfect repeats needed to call a telomere array. Three "
-                        "units is already ~4**-18 by chance; the reported unit count is what "
-                        "tells you how strong a call is (default 3)")
+    g.add_argument("--min-telomere-units", type=int, default=10,
+                   help="tandem repeat units needed before an array counts as a telomere "
+                        "(default 10). It was 3, justified by a per-position chance argument "
+                        "that does not survive the actual search: six motifs, both strands, "
+                        "two windows, every segment, and the motifs are AT-skewed so they are "
+                        "enriched exactly where we look. Three units is also 18 bp, which is "
+                        "not biologically a telomere. The unit count is always reported, so a "
+                        "marginal call stays auditable")
     g.add_argument("--max-period", type=int, default=3000,
                    help="largest tandem repeat unit to screen for (default 3000)")
     g.add_argument("--max-period-scan-length", type=parse_size, default=200_000)
@@ -490,6 +531,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     g.add_argument("--tie-threshold", type=float, default=0.75,
                    help="hypotheses within this score of the best are reported as tied "
                         "(default 0.75)")
+    g.add_argument("--prokaryote-min-chromosome", type=parse_size, default=500_000,
+                   help="a CIRCULAR segment at least this long and at about single-copy depth "
+                        "is read as a prokaryotic chromosome, which switches organelle calls "
+                        "to plasmid calls and warns that this tool infers eukaryotic linear "
+                        "karyotypes (default 500k)")
     g.add_argument("--assembler",
                    choices=["flye", "hifiasm", "verkko", "spades", "miniasm", "canu",
                             "unknown"],

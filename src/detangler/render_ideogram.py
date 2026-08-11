@@ -297,6 +297,18 @@ def render_svg(model: Model, interactive: bool = False) -> str:
     # largest left to right, but chromosome 1 is the largest by near-universal
     # convention, so tying the number to position would have inverted it. The
     # numbers count down towards the right-hand end of the panel.
+    # A question mark when the drawn hypothesis is not separable from the
+    # runner-up. The figure used to assert "chr 1" in the same output where the
+    # report said the graph could not choose, and the figure is what gets put in
+    # a talk. Which chromosome is which is never claimed either way - size order
+    # is a hint, not evidence - but a bare number reads as a claim.
+    _hs = getattr(model, "hypotheses", None) or []
+    _tied = (
+        len(_hs) >= 2
+        and abs(_hs[0].score - _hs[1].score) <= getattr(model, "tie_threshold", 0.75)
+    )
+    _q = "?" if _tied else ""
+
     _rank = {
         q.name: i + 1
         for i, q in enumerate(
@@ -516,7 +528,7 @@ def render_svg(model: Model, interactive: bool = False) -> str:
         add(
             f'<text x="{x + BAR_W / 2:.1f}" y="{lay.baseline + 34:.1f}" '
             f'font-size="{FS_ANNOT}" font-weight="700" text-anchor="middle" '
-            f'fill="{PALETTE["text"]}">chr {_rank.get(s.name, 0)}</text>'
+            f'fill="{PALETTE["text"]}">chr {_rank.get(s.name, 0)}{_q}</text>'
         )
         add(
             f'<text x="{x + BAR_W / 2:.1f}" y="{lay.baseline + 34 + FS_ANNOT + 6:.1f}" '

@@ -68,6 +68,53 @@ left. The bird graph tested here had 34 L-lines for 683 segments.
 | *Baeolophus bicolor* `bBaeBic1` hap1 `p_ctg`, GenomeArk | 683 | 50 s, 242 molecules, zero joins - contig graph, nothing to detangle |
 | synthetic 25-contig chain of direct links | 25 | found the direct-link scoring bug |
 | synthetic bacterial chromosome + plasmid | 2 | found the "plasmid called a mitochondrion" bug |
+| *Eucalyptus*, Flye `assembly_graph.gfa`, 645 Mb | 11,194 | found two bugs that made the tool hang or die silently; see below |
+
+## The Eucalyptus graph, 11 Aug 2026
+
+A real Flye repeat graph from Anna's own data: **11,194 segments, 7,557 links,
+645.3 Mb, longest segment 2.20 Mb.** Eucalyptus has 11 chromosomes of roughly
+40-60 Mb, so the longest contig in this graph is about 4% of a chromosome arm.
+That is the whole story: there is no path from this graph's scale to chromosome
+scale, and no inference can invent one.
+
+**As a biological test it is uninformative.** Filtered to segments >= 500 kb
+plus their bridging neighbours (716 segments, 225 Mb) it reports **218 molecules**
+against a true count of 11 - one per backbone contig, exactly the artefact the
+human-scale test predicted. Six telomere arrays were found in that slice (16 in
+the >= 100 kb slice, 12-93 units each), and the baseline depth read correctly at
+10x, so the sequence-derived evidence works; there is simply nothing to join.
+
+**As a stress test it was very informative.** It found two bugs that no smaller
+graph could:
+
+1. **Silent death during hypothesis enumeration.** `enumerate_hypotheses` kept
+   every valid hypothesis in a list, and each one holds a full linear forest
+   over the backbone. At 2,991 segments that exhausted 3 GB and the process was
+   killed with no message at all - the tool just vanished. Nothing downstream
+   ever looks past `--max-hypotheses`, so it now keeps a bounded heap instead.
+   Memory went from climbing past 1 GB and dying to flat at ~508 MB.
+2. **An apparent hang in the colour assignment.** `assign_segment_colours` runs
+   an exhaustive pairwise swap, O(4 x n^2) trials, each one copying the whole
+   colour map and re-measuring every linked pair. At 716 segments that is
+   roughly 1.4 billion operations and the run sat there long after the biology
+   had finished. Found with `faulthandler.dump_traceback_later`, not by
+   guessing. Graphs of 60 segments or fewer keep the exhaustive search
+   unchanged, so the README figures are byte-identical; above that it repairs
+   the single worst-contrast pair at a time.
+
+Runtimes after both fixes: **716 segments 41 s, 2,991 segments 2m25s**, where
+before neither finished. The full 11,194-segment file still needs more memory
+than a 3 GB machine has, at the parse step.
+
+There is now a scope warning at `SCOPE_SEGMENT_WARN = 400` segments, so a user
+hears this before the run rather than discovering it from a 218-bar figure.
+
+**One call to check.** The graph yields four organelle candidates, three of them
+15-18 kb circles at 30-110x labelled "mitochondrion-like". Plant mitogenomes are
+200-700 kb, so those are more likely rDNA or other high-copy circles. The
+summary line also says "a mitochondrial genome", singular, while the table lists
+four. Not yet fixed.
 
 **In progress.** An Arabidopsis Col-0 assembly is running on Galaxy
 (`gtntesting`, history `a2190c6d75c35794`) from `SRR14728885`, the Col-XJTU HiFi

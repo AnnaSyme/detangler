@@ -220,12 +220,67 @@ def call_segments(
             )
 
     # ---- steps 3-4: classification ----
+    # Decided BEFORE the per-segment loop, because otherwise whether a plasmid
+    # is called an organelle would depend on whether the bacterial chromosome
+    # happened to be classified first.
+    prokaryotic = any(
+        c.self_loop_same_orient
+        and c.length >= args.prokaryote_min_chromosome
+        and c.copy_number is not None
+        and c.copy_number < args.organelle_min_copy
+        for c in calls
+    )
+
     for c in calls:
         cn = c.copy_number
         r = c.reasons
         isolated = c.component_size == 1 or c.degree == 0
 
+        # A big CIRCULAR segment at about single-copy depth is a prokaryotic
+        # chromosome, and its presence changes what everything else means. On a
+        # bacterial graph the old rules called the 60 kb plasmid "a
+        # mitochondrial genome" - it satisfies every organelle test, being
+        # circular, isolated, in the size range and far above baseline - and
+        # drew the 5 Mb chromosome as a linear molecule, because the chaining
+        # step rejects cycles. Both statements were confidently wrong.
         if (
+            c.self_loop_same_orient
+            and c.length >= args.prokaryote_min_chromosome
+            and cn is not None
+            and cn < args.organelle_min_copy
+        ):
+            c.cls = "prokaryote_chromosome"
+            r.append(
+                f"circular, {human_bp(c.length)}, {cn:.1f}x - at single-copy depth this is a "
+                f"PROKARYOTIC CHROMOSOME, not an organelle. This tool infers a eukaryotic "
+                f"karyotype: it chains segments into LINEAR molecules and rejects cycles, so a "
+                f"circular chromosome cannot be drawn as what it is. Treat the chromosome "
+                f"panel as not applicable here; the segment classes and the graph panel are "
+                f"still meaningful"
+            )
+            log.warn(
+                f"{c.name} is a circular {human_bp(c.length)} segment at single-copy depth, so "
+                f"this looks like a PROKARYOTIC assembly. detangler infers eukaryotic linear "
+                f"chromosomes and will not describe it correctly. Smaller circular segments are "
+                f"reported as plasmids rather than organelles."
+            )
+        elif (
+            (c.self_loop_same_orient or isolated)
+            and cn is not None
+            and cn >= args.organelle_min_copy
+            and args.organelle_min_length <= c.length <= args.organelle_max_length
+            and prokaryotic
+        ):
+            # Same evidence, different reading, because the context changed.
+            c.cls = "plasmid"
+            r.append(
+                f"circular, {human_bp(c.length)}, {cn:.1f}x relative copy number, in an "
+                f"assembly that also contains a circular chromosome at single-copy depth. In "
+                f"that company this is a PLASMID, not an organelle - the size and copy number "
+                f"look identical, and only the presence of the bacterial chromosome tells them "
+                f"apart"
+            )
+        elif (
             (c.self_loop_same_orient or isolated)
             and cn is not None
             and cn >= args.organelle_min_copy

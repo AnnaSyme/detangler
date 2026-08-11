@@ -1,5 +1,12 @@
 # detangler — method rationale: assembly graph to linear chromosome hypothesis
 
+> **Dated 9 Aug 2026. Partly superseded - read the corrections in place below.**
+> Three things changed after this was written: centromere-shaped bridges now
+> score (they did not on 9 Aug), the `low coverage / foreign` class was renamed,
+> and `--min-telomere-units` went from 3 to 10. The corrections are marked
+> CORRECTED inline. For the current behaviour see the README and
+> `detangler_review-actions_v1.md`.
+
 How detangler converts an assembler's GFA into a ranked hypothesis of linear
 chromosomes. Captured 9 Aug 2026 from the working session on the real Flye
 *Fusarium graminearum* assembly (`real_data/flye_assembly_graph.gfa`).
@@ -18,8 +25,11 @@ chromosomes. Captured 9 Aug 2026 from the working session on the real Flye
     copies of a 7.7 kb unit).
   - Circular, isolated, organelle-typical size, elevated copy number,
     divergent GC → **organelle candidate** (edge_11).
-  - < ~0.6x → **low coverage / foreign** — haplotype-specific,
-    sub-stoichiometric, or contamination (edge_3, edge_4, edge_8).
+  - < ~0.6x → **below single-copy depth** — haplotype-specific,
+    sub-stoichiometric, or contamination (edge_3, edge_4, edge_8). CORRECTED:
+    this class was called `low coverage / foreign` when this was written. The
+    word "foreign" was an accusation the depth does not support, and the same
+    document then called edge_8 a candidate centromere.
 
 - **Joins are asserted conservatively.** Two backbones are chained into one
   chromosome only when the segment bridging them is present in roughly one
@@ -32,14 +42,32 @@ chromosomes. Captured 9 Aug 2026 from the working session on the real Flye
   canonical telomere repeat motif arrays (TTAGG-family here). A finished
   linear chromosome carries an array at each end, so the number of capped ends
   bounds how many molecules the graph supports — this is where "4, but the
-  graph supports 4–5" comes from. Chromosome ends abutting the telomeric
-  segments edge_8/edge_9 count as capped.
+  graph supports 4–5" comes from. Chromosome ends abutting a telomeric segment
+  count as capped. CORRECTED: this said "the telomeric segments edge_8/edge_9".
+  **edge_8 has no telomere array.** The only telomeric segment on this graph is
+  edge_9, a perfect (TTAGGG)x17 array 4 bp from its free `s` end. CORRECTED
+  also: telomere credit is now capped by copy number - edge_9 is present in
+  ~1.95 copies and so cannot cap four ends, which is what it was being paid for.
 
-- **Centromeres are not called.** The tool only flags markedly AT-rich
-  segments (GC well below the genome baseline, 48% here), because in many
-  fungi AT-rich blocks mark centromeric or subtelomeric sequence. That is a
-  hint, not a call — proper telomere/centromere identification is parked for
-  delegation to dedicated tools (tidk etc.).
+- **Centromeres are not called.** CORRECTED: no longer true as written. Since
+  11 Aug, a long, markedly AT-rich, low-copy segment that bridges exactly two
+  backbone ends earns `--centromere-bonus`, and a join through it pays a reduced
+  speculative penalty — the reasoning being that an assembler is expected to
+  fail to read through an AT-rich centromere, so the missing through-path is
+  explained rather than damning. It is still a hypothesis-raiser and not a
+  diagnosis: the tool does not assert that such a segment IS a centromere, and
+  the two constants involved were tuned on one known answer, not validated.
+  Proper telomere/centromere identification is still delegated to dedicated
+  tools (tidk etc.).
+
+  On edge_8 specifically, all that is established is that a 51 kb, 86%-AT block
+  sits at the junction between edge_2 and edge_7. The length agreement with
+  published chr1 is **not** evidence for including it: with edge_8 the chain is
+  +0.33% against the published length, without it −0.11%. The fit is better
+  without. What is defensible is that edge_2 and edge_7 each carry a telomeric
+  neighbour at their outer ends, so joining them yields a telomere-to-telomere
+  molecule, and all four molecules then match the four published chromosomes to
+  about 1%.
 
 - **Nothing is deleted; it is set apart.**
   - Isolated low-coverage sequence with divergent GC that touches nothing

@@ -65,7 +65,7 @@ TANGLE_LABEL = {
     "repeat_segment": "Repeat segment (multi-copy)",
     "tandem_array": "Tandem array",
     "at_rich_region": "AT-rich segment",
-    "low_coverage_region": "Low-coverage / foreign segment",
+    "low_coverage_region": "Below single-copy depth",
 }
 
 

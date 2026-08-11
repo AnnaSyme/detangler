@@ -23,6 +23,7 @@ import importlib.util
 import types
 import os
 import shutil
+import re
 import sys
 import tempfile
 
@@ -517,7 +518,12 @@ def main() -> int:
         print(f"  {'PASS' if ok else 'FAIL'}  repeat candidates exported for BLAST: {names}")
         failures += 0 if ok else 1
 
-    print(f"\n{len(CHECKS) - 1 - failures} passed, {failures} failed")
+    print("\nReal graph checks (the rule that produces the headline)\n")
+    real_failures, real_total = real_graph_checks(kg, tmp)
+    failures += real_failures
+
+    total = len(CHECKS) - 1 + real_total
+    print(f"\n{total - failures} passed, {failures} failed")
     if not a.keep:
         shutil.rmtree(tmp, ignore_errors=True)
     else:
@@ -558,6 +564,62 @@ def _intercept(fn, holder):
 
     wrapper.__wrapped__ = fn  # type: ignore
     return wrapper
+
+
+# ---------------------------------------------------------------------------
+# The headline claim, tested on the REAL graph
+# ---------------------------------------------------------------------------
+# Everything above runs on a synthetic fixture whose edge_8 is GC 47% against a
+# 48% baseline - not AT-rich, so the centromere rule cannot fire there. That
+# means the rule which produces the shipped headline was covered by nothing.
+# This runs the real GFA and pins the thing that actually matters: how much of
+# the answer rests on two tunable constants.
+
+
+def _score_gap(kg, gfa, out_root, extra):
+    """Run the real GFA and return (score of hypothesis 1, score of 2, n molecules)."""
+    out = os.path.join(out_root, "h" + str(abs(hash(tuple(extra))) % 10000))
+    argv = ["--gfa", gfa, "--out-dir", out, "--prefix", "real", "--quiet"] + list(extra)
+    try:
+        kg.main(argv)
+    except SystemExit:
+        pass
+    text = open(os.path.join(out, "real_report.md")).read()
+    scores = [float(m) for m in re.findall(r"^### Hypothesis \d+ \(score (-?[\d.]+)\)",
+                                           text, re.M)]
+    mols = re.search(r"^Best estimate: \*\*(\d+) linear molecule", text, re.M)
+    return scores, int(mols.group(1)) if mols else -1
+
+
+def real_graph_checks(kg, out_root) -> int:
+    gfa = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "real_data", "flye_assembly_graph.gfa")
+    if not os.path.exists(gfa):
+        print("  SKIP  real_data/flye_assembly_graph.gfa not present")
+        return 0, 0
+
+    failures = 0
+
+    def expect(name, cond, detail=""):
+        nonlocal failures
+        print(f"  {'PASS' if cond else 'FAIL'}  {name}{'' if cond else '  -> ' + detail}")
+        if not cond:
+            failures += 1
+
+    default_scores, default_n = _score_gap(kg, gfa, out_root, [])
+    off_scores, off_n = _score_gap(kg, gfa, out_root, ["--centromere-bonus", "0"])
+
+    expect("real graph: the tool reaches 4 molecules by default",
+           default_n == 4, f"got {default_n}")
+    expect("real graph: turning off --centromere-bonus changes the answer to 5",
+           off_n == 5, f"got {off_n}")
+
+    gap = (default_scores[0] - default_scores[1]) if len(default_scores) >= 2 else 99.0
+    expect("real graph: the top two hypotheses are within the 0.75 tie threshold, "
+           "so the headline must not assert a single number",
+           gap <= 0.75, f"gap is {gap:.2f}")
+
+    return failures, 3
 
 
 if __name__ == "__main__":

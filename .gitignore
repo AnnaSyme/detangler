@@ -29,3 +29,5 @@ out*/
 
 # real data: the GFA is 36 MB with full sequence — keep it local, not on GitHub
 real_data/*.gfa
+real_data/*.gfa.gz
+# ...the bird graph alone is 1.1 GB; GitHub refuses over 100 MB

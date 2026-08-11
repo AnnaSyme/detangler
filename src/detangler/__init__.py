@@ -15,7 +15,7 @@ ASSEMBLED MODE (--fasta / --fai / --assembly-report, plus --gfa)
 GRAPH-FIRST MODE (--gfa alone, optionally --flye-info)
   You only have contigs and a graph. The tool sets a single-copy depth baseline,
   estimates a copy number for every segment, classifies segments (backbone,
-  repeat, tandem array, organelle candidate, low-coverage/foreign), reads
+  repeat, tandem array, organelle candidate, below single-copy depth), reads
   position within each contig's graph_path, and then enumerates and RANKS
   hypotheses about which segments form which chromosome. It does not pick one
   silently, and it never claims to know which chromosome is which.

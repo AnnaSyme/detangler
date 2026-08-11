@@ -1179,6 +1179,8 @@ def model_from_hypothesis(
         "at_rich": "at_rich_region",
         "low_coverage": "low_coverage_region",
         "haplotig": "low_coverage_region",
+        "plasmid": "organelle",
+        "prokaryote_chromosome": "organelle",
     }
     def facing_side(seg: str, other: Optional[str]) -> Optional[str]:
         """The physical end of seg that carries a link to other, if unambiguous."""

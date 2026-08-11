@@ -6,6 +6,7 @@ import glob
 import gzip
 import json
 import math
+from functools import lru_cache
 import os
 import re
 import sys
@@ -42,6 +43,8 @@ CLASS_COLOUR = {
     "organelle_candidate": "#3f7d5c",
     "low_coverage": "#a8a8a8",
     "haplotig": "#b0a0c0",
+    "plasmid": "#7d6ba7",
+    "prokaryote_chromosome": "#3f7d5c",
     "short_single_copy": "#8fa8bd",
     "unclassified": "#cfcfcf",
 }
@@ -82,17 +85,25 @@ CLASS_LABEL = {
     "at_rich": "AT-rich",
     "tandem_array": "tandem array",
     "organelle_candidate": "organelle candidate",
-    "low_coverage": "low coverage / foreign",
+    "low_coverage": "below single-copy depth",
     "haplotig": "unpurged haplotig",
+    "plasmid": "plasmid",
+    "prokaryote_chromosome": "prokaryotic chromosome (circular)",
     "short_single_copy": "short, single copy",
     "unclassified": "unclassified",
 }
+
+
+# Above this many segments the exhaustive pairwise colour swap is too slow to
+# be worth it, and the figure is too crowded for the difference to be visible.
+EXHAUSTIVE_COLOUR_SWAP_MAX = 60
 
 
 def _rgb(hex_colour: str) -> Tuple[int, int, int]:
     return tuple(int(hex_colour[i : i + 2], 16) for i in (1, 3, 5))  # type: ignore
 
 
+@lru_cache(maxsize=None)
 def colour_distance(a: str, b: str) -> float:
     """
     How far apart two fills look. Weighted to match the eye's sensitivity -
@@ -151,16 +162,54 @@ def assign_segment_colours(
         return min(colour_distance(cmap[a], cmap[b]) for a, b in adjacent)
 
     best = worst(colours)
-    for _pass in range(4):
+
+    # The exhaustive version below is O(passes x n^2) trials, and each trial
+    # copies the whole colour map and re-measures every linked pair. On eleven
+    # segments that is instant. On a 716-segment Eucalyptus repeat graph it is
+    # about 1.4 billion operations, and the run appeared to hang here - the
+    # process sat in this loop long after everything else had finished.
+    #
+    # Small graphs keep the exhaustive search exactly as it was, so the figures
+    # in the README do not change. Above the cutoff, switch to repairing the
+    # single worst pair at a time, which is what the exhaustive search spends
+    # nearly all its time discovering anyway.
+    if len(names) <= EXHAUSTIVE_COLOUR_SWAP_MAX:
+        for _pass in range(4):
+            improved = False
+            for i in range(len(names)):
+                for j in range(i + 1, len(names)):
+                    trial = dict(colours)
+                    trial[names[i]], trial[names[j]] = trial[names[j]], trial[names[i]]
+                    score = worst(trial)
+                    if score > best + 1e-9:
+                        colours, best = trial, score
+                        improved = True
+            if not improved:
+                break
+        return colours
+
+    # Only segments that are actually linked can change the objective, and the
+    # objective is set by the single closest linked pair. Find that pair, try
+    # swapping each of its two members against a bounded sample of other
+    # segments, take the first swap that lifts the minimum, repeat.
+    linked = [n for n in names if any(n in (a, b) for a, b in adjacent)]
+    candidates = linked or names
+    for _round in range(60):
+        a, b = min(adjacent, key=lambda ab: colour_distance(colours[ab[0]], colours[ab[1]]))
         improved = False
-        for i in range(len(names)):
-            for j in range(i + 1, len(names)):
-                trial = dict(colours)
-                trial[names[i]], trial[names[j]] = trial[names[j]], trial[names[i]]
-                score = worst(trial)
+        for member in (a, b):
+            for other in candidates[:80]:
+                if other == member:
+                    continue
+                colours[member], colours[other] = colours[other], colours[member]
+                score = worst(colours)
                 if score > best + 1e-9:
-                    colours, best = trial, score
+                    best = score
                     improved = True
+                    break
+                colours[member], colours[other] = colours[other], colours[member]
+            if improved:
+                break
         if not improved:
             break
     return colours

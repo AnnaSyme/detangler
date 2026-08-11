@@ -21,7 +21,11 @@ contribution is visible. Delete the word "validated" from
 `detangler_enhancements_v1.md` - one free parameter fitted to one known answer
 is not validation.
 
-**2. Stop quoting 0.3% as evidence for the centromere join.** Verified against
+**2. DONE 11 Aug. Stop quoting 0.3% as evidence for the centromere join.** The
+shipped code and README never asserted it; the claim lived in the working notes.
+`detangler_method-rationale_v1.md` now states the arithmetic both ways and says
+the fit is better WITHOUT edge_8, and no longer calls edge_8 a centromere as
+though established. Verified against
 RefSeq: edge_2+edge_8+edge_7 = 11,735,737 bp against chr1 = 11,697,295, so
 +0.33%. But edge_2+edge_7 WITHOUT edge_8 = 11,684,239, which is -0.11%. The
 length agreement fits BETTER without the centromere. It is not corroboration.
@@ -96,13 +100,14 @@ edge_8 "foreign" in the segment table and a candidate centromere in the
 hypothesis section. "sub-baseline depth" carries the same information without
 the accusation.
 
-**13. Stale AND duplicated docs.** `chromviz_method-rationale_v1.md` and
-`chromviz_blast-enhancements_v1.md` are byte-identical leftovers from before
-the rename and should be deleted. Separately: `chromviz_method-rationale_v1.md` says
-"Centromeres are not called"; the shipped report says the opposite. It also
-attributes a telomere array to edge_8, which has none. Delete or date-stamp.
+**13. DONE 11 Aug. Stale AND duplicated docs.** The two byte-identical
+`chromviz_*` leftovers are gone from the working tree and from `git ls-files`.
+`detangler_method-rationale_v1.md` now carries a dated superseded banner and
+three inline CORRECTED notes: centromere-shaped bridges DO score now, edge_8 has
+no telomere array (edge_9 is the only telomeric segment), and the
+`low coverage / foreign` class has been renamed.
 
-**14. `--min-telomere-units 3`.** The chance argument in `cli.py:446` is for one
+**14. DONE 11 Aug. Raised to 10.** `--min-telomere-units 3`: The chance argument in `cli.py:446` is for one
 specified 18-mer at one position, but the scan is 6 motifs x 2 strands x 2
 windows x every segment, and the motifs are AT-skewed. Three units is also not
 biologically a telomere. Raise to ~10; keep reporting the unit count.
@@ -133,7 +138,14 @@ not make the inference meaningful at that scale.
 
 ## Testing
 
-**15. The regression suite does not cover the headline claim.** Its fixture sets
+**15. DONE 11 Aug. The regression suite does not cover the headline claim.**
+`real_graph_checks` in the test script now runs the real GFA and pins three
+things: the tool reaches 4 molecules by default, setting `--centromere-bonus 0`
+changes the answer to 5, and the top two hypotheses stay inside the tie
+threshold so the headline must not assert a single number. It skips cleanly if
+`real_data/flye_assembly_graph.gfa` is absent. 23/23.
+
+Original finding: Its fixture sets
 edge_8 to GC 47% against a 48% baseline, so the centromere rule cannot fire, and
 the suite reports 5 molecules while the shipped tool reports 4. It also puts
 edge_9's telomere array at both ends where the real one is at the start only.

@@ -118,10 +118,23 @@ four. Not yet fixed.
 
 **In progress.** An Arabidopsis Col-0 assembly is running on Galaxy
 (`gtntesting`, history `a2190c6d75c35794`) from `SRR14728885`, the Col-XJTU HiFi
-read set, via fasterq-dump then Hifiasm. The aim is a `p_ctg`/`p_utg` GFA *with*
-sequence for a 5-chromosome genome whose telomere motif (`TTTAGGG`) is already
-in the built-in set and whose CEN180 centromere arrays are the same situation as
-`edge_8` but bigger and with a published answer.
+read set. Submitted 11 Aug 2026:
+
+- `fasterq-dump` gave one single-end file, 18.5 GB - about 130x for a 135 Mb
+  genome, well past what hifiasm needs and enough to risk a memory or walltime
+  failure hours in.
+- `seqtk_sample` 1.5+galaxy0, fraction 0.3, seed 42 -> about 39x (hid 6).
+- `Hifiasm` 0.25.0+galaxy3, standard mode, all option groups left at defaults
+  (hid 7-12), chained so it queues behind the subsample.
+
+The outputs to want are **hid 8, the raw unitig graph (`r_utg`)** and hid 9, the
+processed unitig graph (`p_utg`). The wrapper writes the `noseq` versions to a
+separate collection, so hid 8 should carry sequence - which is the thing that
+disqualified every published Verkko graph.
+
+Why this genome: 5 chromosomes, telomere motif `TTTAGGG` already in the built-in
+set, and CEN180 centromere arrays that are the same situation as `edge_8` on the
+Fusarium graph but larger and with a published answer to check against.
 
 **Still not tested: a genuinely tangled graph from anything but a fungus.** That
 is the test that would stress the inference rather than the drawing. A hifiasm

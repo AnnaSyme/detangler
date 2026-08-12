@@ -1,0 +1,126 @@
+Close out the review list, and two bugs a big graph found
+
+Finishes the remaining items from the external review (2, 7, 11, 12, 13, 14, 15)
+and fixes two failures that only show up on a graph with thousands of segments.
+
+THE TOOL WAS DYING SILENTLY ON LARGE GRAPHS
+
+enumerate_hypotheses kept every valid hypothesis in a list, and each Hypothesis
+holds a full linear forest over the backbone. On a 2,991-segment Eucalyptus
+repeat graph that is (valid masks) x (backbone segments) strings: it exhausted
+3 GB and the process was killed with no message at all. The tool simply
+vanished - no traceback, no partial output.
+
+Nothing downstream ever looks past --max-hypotheses, so a bounded heap gives the
+same answer in constant memory. Memory went from climbing past 1 GB and dying to
+flat at ~508 MB. The heap ordering reproduces the old sort exactly (higher score
+first, then fewer joins), so results on small graphs are unchanged.
+
+AND THEN APPEARING TO HANG IN THE COLOUR ASSIGNMENT
+
+assign_segment_colours runs an exhaustive pairwise swap to push linked segments
+apart in colour: O(4 x n^2) trials, each one copying the whole colour map and
+re-measuring every linked pair. On eleven segments that is instant. On 716 it is
+about 1.4 billion operations, and the run sat there long after the biology had
+finished. Located with faulthandler.dump_traceback_later rather than by
+guessing.
+
+Graphs of 60 segments or fewer (EXHAUSTIVE_COLOUR_SWAP_MAX) keep the exhaustive
+search untouched, so the figures in the README are unchanged. Above that it
+repairs the single worst-contrast pair at a time, bounded at 60 rounds.
+colour_distance is now memoised.
+
+Runtimes after both fixes: 716 segments 41 s, 2,991 segments 2m25s. Before,
+neither finished.
+
+New SCOPE_SEGMENT_WARN (400): a graph past that gets a warning at the start of
+the run saying the count will describe the assembly and not the karyotype, so
+the user hears it before rather than after a 218-bar figure.
+
+ITEM 15 - THE TEST SUITE NOW COVERS THE HEADLINE CLAIM
+
+The fixture sets edge_8 to GC 47% against a 48% baseline, so the centromere rule
+could not fire in the suite at all, and the suite reported 5 molecules while the
+shipped tool reported 4. The rule that produces the headline was covered by
+nothing.
+
+real_graph_checks now runs the real Fusarium GFA and pins three things: the tool
+reaches 4 molecules by default, --centromere-bonus 0 changes the answer to 5,
+and the top two hypotheses stay inside the tie threshold so the headline must
+not assert a single number. It skips cleanly if real_data/ is absent. 23/23.
+
+ITEM 7 - A PLASMID WAS BEING CALLED A MITOCHONDRION
+
+On a bacterial GFA - 5 Mb circular chromosome plus a 60 kb plasmid - the summary
+read "1 linear molecule and a mitochondrial genome". calls.py now detects the
+prokaryote case before the per-segment loop (a circular segment above
+--prokaryote-min-chromosome, default 500 kb, at single-copy depth) and registers
+prokaryote_chromosome and plasmid classes ahead of organelle_candidate.
+
+ITEM 11 - THE FIGURE ASSERTED WHAT THE REPORT WITHDREW
+
+Bars are labelled chr N? when the top two hypotheses are within --tie-threshold.
+The figure is what gets put in a talk, and a bare number reads as a claim.
+
+ITEM 12 - "low coverage / foreign" RENAMED to "below single-copy depth"
+
+The same document called edge_8 foreign in the segment table and a candidate
+centromere in the hypothesis section. The new name carries the information
+without the accusation.
+
+ITEM 14 - --min-telomere-units 3 RAISED TO 10
+
+The chance argument was written for one specified 18-mer at one position, but
+the scan is 6 motifs x 2 strands x 2 windows x every segment, and the motifs are
+AT-skewed. Three units is also not biologically a telomere. edge_9 (17 units)
+still passes.
+
+ITEM 2 - STOP QUOTING 0.3% AS EVIDENCE FOR THE CENTROMERE JOIN
+
+edge_2+edge_8+edge_7 = 11,735,737 bp against published chr1 = 11,697,295, so
++0.33%. But edge_2+edge_7 WITHOUT edge_8 = 11,684,239, which is -0.11%. The
+length agreement fits BETTER without the centromere. It was never corroboration
+and quoting only the first figure was cherry-picking.
+
+The code and README never asserted it; the claim lived in the working notes,
+which now state the arithmetic both ways. What is defensible is that edge_2 and
+edge_7 each carry a telomeric neighbour at their outer ends, so joining them
+gives a telomere-to-telomere molecule, and all four molecules then match the
+four published chromosomes to about 1%. All that is established about edge_8 is
+that a 51 kb 86%-AT block sits at the junction.
+
+ITEM 13 - STALE AND DUPLICATED DOCS
+
+The two byte-identical chromviz_* leftovers are gone from the tree and from
+git ls-files. detangler_method-rationale_v1.md now carries a dated superseded
+banner and three inline CORRECTED notes: centromere-shaped bridges DO score now
+(that document said they are never called), edge_8 has NO telomere array - the
+document attributed one to it, and edge_9 is the only telomeric segment on the
+graph - and the low coverage / foreign class has been renamed.
+
+DOCS
+
+detangler_test-data_v1.md gains the Eucalyptus run: 11,194 segments, 7,557
+links, 645.3 Mb, longest segment 2.20 Mb against chromosomes of 40-60 Mb. On a
+716-segment slice it reports 218 molecules where the true count is 11 - one per
+backbone contig, the same artefact the human-scale test predicted. Six telomere
+arrays were found in that slice and baseline depth read correctly at 10x, so the
+sequence-derived evidence works; there is simply nothing to join. Uninformative
+biologically, and the best stress test the tool has had.
+
+Also recorded there: the length-only filter was the wrong way to reduce the
+graph. Keeping segments >= 100 kb dropped 7,000 of the 7,557 links, because the
+links run through the short repeat segments - which would have reproduced the
+bird contig-graph failure by construction. Keeping long segments PLUS any short
+segment bridging two of them preserves the junctions.
+
+One call left open: the graph yields three 15-18 kb circles at 30-110x labelled
+"mitochondrion-like", but plant mitogenomes are 200-700 kb, so those are more
+likely rDNA or other high-copy circles. The summary line also says "a
+mitochondrial genome", singular, while the table lists four candidates.
+
+detangler_review-actions_v1.md: items 2, 7, 11, 12, 13, 14 and 15 marked done
+with what was actually changed. Item 1 remains partly done - the per-hypothesis
+score with and without the centromere terms is still not printed.
+
+Tests 23/23.

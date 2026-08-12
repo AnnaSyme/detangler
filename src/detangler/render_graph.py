@@ -256,7 +256,23 @@ def bandage_layout(
     if not names:
         return {}, 100.0, 100.0
 
-    spacing = max(segment_thickness() * 0.42, 8.0)
+    # Bead spacing is derived from the LONGEST contig, not fixed.
+    #
+    # A contig is a chain of beads, and how far it can curl is set by how many
+    # beads it has. With a fixed spacing a 12 Mb contig gets a long floppy chain
+    # and folds back on itself, while a 500 kb one gets three beads and cannot
+    # bend at all - so one figure contains both a knot and a stick, and it gets
+    # worse the wider the contig-length spread is. Capping the bead count of the
+    # longest contig makes every contig's stiffness comparable on any genome.
+    #
+    # Measured on the Fusarium graph: mean winding (total turning per contig)
+    # fell from 78 to 25 degrees, and it is winding, not separation, that tracks
+    # whether a reader calls the figure clear. Pushing ribbons further apart
+    # without this makes winding WORSE, because they curl to fit.
+    MAX_BEADS = 8
+    _longest = max((segment_draw_length(by_name[n].length, args) for n in names),
+                   default=0.0)
+    spacing = max(segment_thickness() * 0.42, 8.0, _longest / MAX_BEADS)
     chain: Dict[str, List[int]] = {}
     pts: List[List[float]] = []
     springs: List[Tuple[int, int, float, float]] = []
@@ -423,7 +439,12 @@ def bandage_layout(
         for n in names
     }
     link_rest = spacing * 0.9
-    w_sep = segment_thickness() * 1.12
+    # Centre-to-centre, in ribbon widths, so the VISIBLE gap is (w_sep - 1)
+    # widths. At 1.12 that gap was 0.12 of a ribbon - technically not touching,
+    # and reading as touching. On the Fusarium graph the old value actually
+    # produced a clearance of 0.99, i.e. overlapping ribbons, which breaks the
+    # invariant in detangler_graph-layout-research_v1.md.
+    w_sep = segment_thickness() * 1.8
     owner = {}
     for n in names:
         for i in chain[n]:
@@ -1490,7 +1511,17 @@ def render_graph_svg(
     return "\n".join(P)
 
 
-def prune_for_drawing(calls, links, args, log: Log):
+def _essential_names(calls, hypothesis_joins):
+    """Segments the drawing must not drop: the backbone, and the routes between it."""
+    names = [c.name for c in calls if c.cls == "backbone"]
+    for j in (hypothesis_joins or []):
+        names.append(j.a)
+        names.append(j.b)
+        names.extend(j.via)
+    return names
+
+
+def prune_for_drawing(calls, links, args, log: Log, hypothesis_joins=None):
     """
     Keep the graph drawable by DROPPING segments, not by refusing to draw.
 
@@ -1510,7 +1541,22 @@ def prune_for_drawing(calls, links, args, log: Log):
     if len(calls) <= limit:
         return calls, links, None
     ranked = sorted(calls, key=lambda c: -c.length)
-    keep = {c.name for c in ranked[:limit]}
+
+    # Keep THE GRAPH THE INFERENCE USED first: the backbone segments and the
+    # segments the drawn hypothesis's joins run through. On a real assembly,
+    # "the 300 longest" is 300 unconnected dots that have nothing to do with
+    # the chromosome panel beside them. Length fills whatever room is left.
+    # This only bites once the graph is over the limit; below it, every segment
+    # is drawn exactly as before.
+    keep = set()
+    for name in _essential_names(calls, hypothesis_joins):
+        if len(keep) >= limit:
+            break
+        keep.add(name)
+    for c in ranked:
+        if len(keep) >= limit:
+            break
+        keep.add(c.name)
     # ...and anything directly attached to a kept segment, so no kept contig is
     # drawn with a link going nowhere.
     for l in links:
@@ -1527,7 +1573,8 @@ def prune_for_drawing(calls, links, args, log: Log):
     note = (
         f"{len(dropped):,} of {len(calls):,} segments omitted from the figure "
         f"({human_bp(span)}, {100.0 * span / total:.1f}% of the assembly); "
-        f"the {len(kept):,} longest are drawn"
+        f"the {len(kept):,} drawn are the chromosome-sized pieces, the segments the "
+        f"candidate joins run through, and then the longest of the rest"
     )
     log.warn(
         note + f". Raise --max-graph-nodes to draw more. Classification and the "
@@ -1546,9 +1593,10 @@ def render_graph_figure(
     path: str,
     args,
     log: Log,
+    hypothesis_joins=None,
 ) -> Optional[str]:
     """The Bandage graph redrawn with our own, fixed colours."""
-    calls, links, _note = prune_for_drawing(calls, links, args, log)
+    calls, links, _note = prune_for_drawing(calls, links, args, log, hypothesis_joins)
     with open(path, "w") as fh:
         fh.write(graph_svg_for_style(calls, links, title, colours, args, log))
     return path

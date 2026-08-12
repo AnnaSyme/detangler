@@ -1,123 +1,123 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="2529" height="1720" viewBox="0 0 2529 1720" font-family="Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="2428" height="2003" viewBox="0 0 2428 2003" font-family="Helvetica, Arial, sans-serif">
 <rect width="100%" height="100%" fill="#ffffff"/>
-<rect x="16" y="16" width="2497" height="1688" rx="10" fill="none" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="6 7" stroke-opacity="0.75"/>
-<text x="1264" y="97" text-anchor="middle" font-size="57" font-weight="700" fill="#1a1a1a">Assembly graph  →  Possible chromosomes</text>
+<rect x="16" y="16" width="2396" height="1971" rx="10" fill="none" stroke="#6b6b6b" stroke-width="2" stroke-dasharray="6 7" stroke-opacity="0.75"/>
+<text x="1214" y="97" text-anchor="middle" font-size="57" font-weight="700" fill="#1a1a1a">Assembly graph  →  Possible chromosomes</text>
 <g transform="translate(0.0,91.0)">
 
 <g id="layer-links" fill="none" stroke="#2b2b2b" stroke-linecap="round">
-<path d="M 1590.8 950.1 C 1588.5 886.2 1032.6 465.4 1069.5 517.7" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 1376.0 1102.8 C 1317.0 1078.2 997.1 490.5 1034.0 542.8" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 1164.5 318.1 C 1204.7 284.2 1214.2 284.7 1227.3 233.8" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 1063.2 420.9 C 1028.9 463.9 1020.1 485.4 1051.7 530.3" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 831.4 642.9 C 777.0 676.7 733.3 744.2 704.3 801.2" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 821.2 626.6 C 767.6 660.0 743.2 657.1 695.4 615.9" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 916.0 579.0 C 970.3 545.2 1006.0 484.3 1042.9 536.6" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 522.7 1180.6 C 496.5 1239.0 496.0 1239.6 477.3 1300.7" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 1228.9 314.9 C 1190.3 320.9 1236.2 276.4 1245.9 238.5" stroke-width="5.4" stroke-opacity="0.85"/>
-<path d="M 1112.2 506.2 C 1086.4 515.0 1044.9 501.7 1060.6 524.0" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 1471.2 993.0 C 1458.2 930.4 924.7 650.8 985.9 669.7" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 1307.0 1108.1 C 1262.0 1062.5 927.9 640.4 989.1 659.3" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 1084.9 392.2 C 1123.9 341.4 1148.2 303.7 1147.1 239.8" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 1006.8 513.7 C 978.2 569.5 935.6 620.0 995.5 638.5" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 742.6 802.4 C 690.9 840.0 647.2 928.7 627.1 989.5" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 731.4 786.8 C 679.6 824.4 617.7 778.0 568.3 737.3" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 822.4 732.5 C 874.2 695.0 931.2 630.0 992.3 648.9" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 511.0 1393.7 C 495.8 1455.8 491.2 1506.2 488.2 1570.1" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 1281.6 212.3 C 1270.6 154.1 1167.4 298.6 1166.3 239.4" stroke-width="5.4" stroke-opacity="0.85"/>
+<path d="M 1084.0 594.1 C 1044.3 617.2 954.9 614.6 998.7 628.1" stroke-width="5.4" stroke-opacity="0.85"/>
 </g>
 <g id="layer-segments" fill="none">
-<path d="M 369.6 314.6 Q 389.0 334.1 410.1 355.0 Q 431.2 376.0 452.6 396.7 Q 473.9 417.4 495.5 437.8 Q 517.2 458.2 539.1 478.3 Q 561.0 498.4 583.2 518.2 Q 605.4 538.0 627.9 557.5 Q 650.3 577.1 660.7 586.1 L 671.1 595.0" stroke="#cab2d6" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 1142.5 495.8 Q 1168.1 487.1 1194.7 474.2 Q 1221.2 461.4 1246.7 446.4 Q 1272.1 431.4 1297.4 416.2 Q 1322.7 401.0 1344.0 380.5 Q 1365.3 360.0 1355.8 332.1 Q 1346.3 304.1 1316.8 304.9 Q 1287.3 305.8 1273.9 307.8 L 1260.5 309.9" stroke="#7e9cac" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 535.9 1151.4 Q 544.3 1132.6 555.2 1108.7 Q 566.0 1084.8 577.1 1060.9 Q 588.1 1037.0 599.3 1013.3 Q 610.6 989.5 622.0 965.8 Q 633.5 942.2 645.2 918.6 Q 656.8 895.0 668.7 871.6 Q 680.5 848.1 685.2 838.9 L 689.8 829.7" stroke="#fdbf6f" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 1405.6 1115.1 Q 1430.4 1125.4 1456.9 1138.0 Q 1483.5 1150.6 1512.5 1155.8 Q 1541.4 1160.9 1565.0 1143.3 Q 1588.5 1125.7 1593.0 1096.6 Q 1597.4 1067.6 1595.2 1038.2 Q 1593.0 1008.9 1592.5 995.5 L 1592.0 982.1" stroke="#1f78b4" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 1083.1 395.9 Q 1093.3 383.2 1110.4 366.2 Q 1127.6 349.3 1133.9 344.0 L 1140.1 338.8" stroke="#a6cee3" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="310.6" cy="1158.4" r="54.4" stroke="#fb9a99" stroke-width="35.2"/>
-<path d="M 1235.7 239.2 Q 1239.4 224.7 1245.3 202.0 Q 1251.2 179.3 1253.1 172.1 L 1255.1 164.9" stroke="#e31a1c" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 1094.4 590.2 Q 1085.6 578.2 1071.9 559.2 Q 1058.2 540.1 1053.9 534.0 L 1049.7 527.8" stroke="#ff7f00" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 233.2 1366.6 Q 219.6 1372.8 198.2 1382.4 Q 176.8 1392.0 170.0 1395.1 L 163.2 1398.1" stroke="#b2df8a" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="456.6" cy="1368.0" r="54.4" stroke="#6a3d9a" stroke-width="35.2"/>
-<path d="M 888.8 595.9 Q 876.1 603.8 856.2 616.2 Q 836.3 628.6 829.9 632.5 L 823.6 636.4" stroke="#33a02c" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 234.2 445.2 Q 254.3 463.9 276.2 484.1 Q 298.0 504.3 320.0 524.3 Q 342.0 544.3 364.3 564.1 Q 386.5 583.8 409.0 603.3 Q 431.4 622.8 454.1 642.1 Q 476.8 661.3 499.6 680.4 Q 522.5 699.4 533.1 708.2 L 543.7 716.9" stroke="#cab2d6" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 1111.6 578.0 Q 1135.0 564.4 1158.4 546.4 Q 1181.8 528.4 1202.7 507.6 Q 1223.7 486.8 1242.0 463.7 Q 1260.2 440.5 1273.1 413.9 Q 1286.0 387.4 1291.2 358.3 Q 1296.4 329.2 1294.5 299.8 Q 1292.6 270.3 1290.1 257.0 L 1287.5 243.7" stroke="#7e9cac" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 518.6 1362.6 Q 523.4 1342.6 529.8 1317.1 Q 536.2 1291.6 542.9 1266.1 Q 549.6 1240.7 556.7 1215.4 Q 563.8 1190.1 571.3 1164.9 Q 578.7 1139.6 586.6 1114.5 Q 594.4 1089.4 602.5 1064.4 Q 610.6 1039.4 613.9 1029.7 L 617.1 1019.9" stroke="#fdbf6f" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 1329.4 1130.8 Q 1348.3 1149.9 1371.4 1168.1 Q 1394.4 1186.4 1422.6 1194.9 Q 1450.7 1203.4 1473.7 1185.0 Q 1496.7 1166.7 1496.6 1137.3 Q 1496.5 1107.9 1489.9 1079.2 Q 1483.2 1050.6 1480.5 1037.5 L 1477.7 1024.3" stroke="#1f78b4" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 1021.5 485.2 Q 1028.9 470.7 1042.2 450.6 Q 1055.5 430.4 1060.5 424.0 L 1065.4 417.5" stroke="#a6cee3" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="234.3" cy="1684.5" r="54.4" stroke="#fb9a99" stroke-width="35.2"/>
+<path d="M 1156.7 242.8 Q 1156.5 227.8 1156.0 204.4 Q 1155.6 180.9 1155.4 173.5 L 1155.3 166.0" stroke="#e31a1c" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 1061.4 673.0 Q 1048.1 666.2 1026.3 657.5 Q 1004.4 648.9 997.2 647.2 L 989.9 645.6" stroke="#ff7f00" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 229.8 1435.6 Q 216.7 1442.7 196.0 1453.8 Q 175.3 1464.9 168.8 1468.4 L 162.2 1472.0" stroke="#b2df8a" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="484.9" cy="1640.4" r="54.4" stroke="#6a3d9a" stroke-width="35.2"/>
+<path d="M 796.5 751.3 Q 784.5 760.1 765.5 773.9 Q 746.5 787.7 740.4 792.1 L 734.4 796.5" stroke="#33a02c" stroke-width="64.0" stroke-linecap="round" stroke-linejoin="round"/>
 </g>
 <g id="layer-labels" fill="#1a1a1a">
-<text x="1588.5" y="1135.2" text-anchor="middle" font-size="27" font-weight="700" fill="#ffffff">1</text>
-<text x="1644.8" y="1158.2" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">19x</text>
-<text x="456.6" y="1323.1" text-anchor="middle" font-size="27" font-weight="700" fill="#ffffff">10</text>
-<text x="410.7" y="1267.7" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">1269x</text>
-<text x="310.6" y="1113.4" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">11</text>
-<text x="293.8" y="1041.2" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">203x</text>
-<text x="1127.6" y="358.7" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">2</text>
-<text x="1173.6" y="395.2" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">19x</text>
-<text x="836.3" y="638.0" text-anchor="middle" font-size="27" font-weight="700" fill="#ffffff">3</text>
-<text x="803.8" y="572.3" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">10x</text>
-<text x="176.8" y="1401.5" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">4</text>
-<text x="144.3" y="1335.7" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">5x</text>
-<text x="610.6" y="998.9" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">5</text>
-<text x="666.9" y="1022.0" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">20x</text>
-<text x="517.2" y="467.7" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">6</text>
-<text x="471.2" y="504.2" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">19x</text>
-<text x="1322.7" y="410.4" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">7</text>
-<text x="1355.2" y="457.3" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">20x</text>
-<text x="1251.2" y="188.8" text-anchor="middle" font-size="27" font-weight="700" fill="#ffffff">8</text>
-<text x="1314.0" y="196.1" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">4x</text>
-<text x="1058.2" y="549.5" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">9</text>
-<text x="1075.0" y="477.3" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">37x</text>
+<text x="1496.7" y="1176.2" text-anchor="middle" font-size="27" font-weight="700" fill="#ffffff">1</text>
+<text x="1553.0" y="1199.2" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">19x</text>
+<text x="484.9" y="1595.5" text-anchor="middle" font-size="27" font-weight="700" fill="#ffffff">10</text>
+<text x="438.9" y="1540.1" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">1269x</text>
+<text x="234.3" y="1639.5" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">11</text>
+<text x="217.4" y="1567.3" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">203x</text>
+<text x="1055.5" y="439.9" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">2</text>
+<text x="1111.8" y="462.9" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">19x</text>
+<text x="746.5" y="797.1" text-anchor="middle" font-size="27" font-weight="700" fill="#ffffff">3</text>
+<text x="714.0" y="731.4" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">10x</text>
+<text x="175.3" y="1474.4" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">4</text>
+<text x="142.8" y="1408.6" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">5x</text>
+<text x="563.8" y="1199.5" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">5</text>
+<text x="626.6" y="1206.9" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">20x</text>
+<text x="386.5" y="593.3" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">6</text>
+<text x="340.5" y="629.8" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">19x</text>
+<text x="1260.2" y="449.9" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">7</text>
+<text x="1316.5" y="473.0" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">20x</text>
+<text x="1155.6" y="190.4" text-anchor="middle" font-size="27" font-weight="700" fill="#ffffff">8</text>
+<text x="1220.6" y="180.9" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">4x</text>
+<text x="1004.4" y="658.3" text-anchor="middle" font-size="27" font-weight="700" fill="#1a1a1a">9</text>
+<text x="1004.4" y="583.9" text-anchor="middle" font-size="27" font-weight="600" fill="#6b6b6b">37x</text>
 </g>
 </g>
-<g transform="translate(1585.0,466.0)">
+<g transform="translate(1484.3,563.0)">
 <defs><pattern id="nts" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#ffffff" fill-opacity="0"/><line x1="0" y1="0" x2="0" y2="6" stroke="#ffffff" stroke-width="2" stroke-opacity="0.55"/></pattern></defs>
 
 <text x="86" y="40" font-size="38" font-weight="600" fill="#1a1a1a"></text>
 <g id="layer-tangles">
 </g>
 <g id="layer-chromosomes">
-<circle cx="305.0" cy="1053.0" r="66.5" fill="none" stroke="#fb9a99" stroke-width="31.5"/>
-<text x="305.0" y="994.1" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">11</text>
-<text x="305.0" y="1153.5" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">mito</text>
-<text x="305.0" y="1180.5" font-size="21" text-anchor="middle" fill="#6b6b6b">98 kb</text>
-<path d="M 402.0 466.9 A 35.0 35.0 0 0 1 437.0 431.9 L 437.0 431.9 A 35.0 35.0 0 0 1 472.0 466.9 L 472.0 1084.5 A 35.0 35.0 0 0 1 437.0 1119.5 L 437.0 1119.5 A 35.0 35.0 0 0 1 402.0 1084.5 Z" fill="#4c72b0" fill-opacity="0.82" stroke="none" />
+<circle cx="305.0" cy="1239.8" r="66.5" fill="none" stroke="#fb9a99" stroke-width="31.5"/>
+<text x="305.0" y="1180.9" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">11</text>
+<text x="305.0" y="1340.3" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">mito</text>
+<text x="305.0" y="1367.3" font-size="21" text-anchor="middle" fill="#6b6b6b">98 kb</text>
+<path d="M 402.0 529.6 A 35.0 35.0 0 0 1 437.0 494.6 L 437.0 494.6 A 35.0 35.0 0 0 1 472.0 529.6 L 472.0 1271.3 A 35.0 35.0 0 0 1 437.0 1306.3 L 437.0 1306.3 A 35.0 35.0 0 0 1 402.0 1271.3 Z" fill="#4c72b0" fill-opacity="0.82" stroke="none" />
 <g class="blocks">
-<path d="M 402.0 466.9 A 35.0 35.0 0 0 1 437.0 431.9 L 437.0 431.9 A 35.0 35.0 0 0 1 472.0 466.9 L 472.0 1084.5 A 35.0 35.0 0 0 1 437.0 1119.5 L 437.0 1119.5 A 35.0 35.0 0 0 1 402.0 1084.5 Z" fill="#1f78b4" fill-opacity="0.95" stroke="none"/>
-<text x="437.0" y="785.1" font-size="27" text-anchor="middle" fill="#ffffff" font-weight="700">1</text>
+<path d="M 402.0 529.6 A 35.0 35.0 0 0 1 437.0 494.6 L 437.0 494.6 A 35.0 35.0 0 0 1 472.0 529.6 L 472.0 1271.3 A 35.0 35.0 0 0 1 437.0 1306.3 L 437.0 1306.3 A 35.0 35.0 0 0 1 402.0 1271.3 Z" fill="#1f78b4" fill-opacity="0.95" stroke="none"/>
+<text x="437.0" y="909.9" font-size="27" text-anchor="middle" fill="#ffffff" font-weight="700">1</text>
 </g>
-<path d="M 402.0 453.6 A 21.7 21.7 0 0 1 423.7 431.9 L 450.3 431.9 A 21.7 21.7 0 0 1 472.0 453.6 L 472.0 475.3 L 472.0 475.3 L 402.0 475.3 Z" fill="#ff7f00" fill-opacity="0.95" stroke="none"/>
-<text x="437.0" y="461.1" font-size="21" text-anchor="middle" fill="#1a1a1a" font-weight="700">9</text>
-<path d="M 402.0 1076.1 L 402.0 1076.1 L 472.0 1076.1 L 472.0 1097.8 A 21.7 21.7 0 0 1 450.3 1119.5 L 423.7 1119.5 A 21.7 21.7 0 0 1 402.0 1097.8 Z" fill="#ff7f00" fill-opacity="0.95" stroke="none"/>
-<text x="437.0" y="1105.4" font-size="21" text-anchor="middle" fill="#1a1a1a" font-weight="700">9</text>
-<text x="437.0" y="1153.5" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">chr 4?</text>
-<text x="437.0" y="1180.5" font-size="21" text-anchor="middle" fill="#6b6b6b">8 Mb</text>
-<path d="M 534.0 451.9 A 35.0 35.0 0 0 1 569.0 416.9 L 569.0 416.9 A 35.0 35.0 0 0 1 604.0 451.9 L 604.0 1084.5 A 35.0 35.0 0 0 1 569.0 1119.5 L 569.0 1119.5 A 35.0 35.0 0 0 1 534.0 1084.5 Z" fill="#4c72b0" fill-opacity="0.82" stroke="none" />
+<path d="M 402.0 516.3 A 21.7 21.7 0 0 1 423.7 494.6 L 450.3 494.6 A 21.7 21.7 0 0 1 472.0 516.3 L 472.0 538.0 L 472.0 538.0 L 402.0 538.0 Z" fill="#ff7f00" fill-opacity="0.95" stroke="none"/>
+<text x="437.0" y="523.9" font-size="21" text-anchor="middle" fill="#1a1a1a" font-weight="700">9</text>
+<path d="M 402.0 1262.9 L 402.0 1262.9 L 472.0 1262.9 L 472.0 1284.6 A 21.7 21.7 0 0 1 450.3 1306.3 L 423.7 1306.3 A 21.7 21.7 0 0 1 402.0 1284.6 Z" fill="#ff7f00" fill-opacity="0.95" stroke="none"/>
+<text x="437.0" y="1292.2" font-size="21" text-anchor="middle" fill="#1a1a1a" font-weight="700">9</text>
+<text x="437.0" y="1340.3" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">chr 4?</text>
+<text x="437.0" y="1367.3" font-size="21" text-anchor="middle" fill="#6b6b6b">8 Mb</text>
+<path d="M 534.0 511.9 A 35.0 35.0 0 0 1 569.0 476.9 L 569.0 476.9 A 35.0 35.0 0 0 1 604.0 511.9 L 604.0 1271.3 A 35.0 35.0 0 0 1 569.0 1306.3 L 569.0 1306.3 A 35.0 35.0 0 0 1 534.0 1271.3 Z" fill="#4c72b0" fill-opacity="0.82" stroke="none" />
 <g class="blocks">
-<path d="M 534.0 451.9 A 35.0 35.0 0 0 1 569.0 416.9 L 569.0 416.9 A 35.0 35.0 0 0 1 604.0 451.9 L 604.0 1084.5 A 35.0 35.0 0 0 1 569.0 1119.5 L 569.0 1119.5 A 35.0 35.0 0 0 1 534.0 1084.5 Z" fill="#fdbf6f" fill-opacity="0.95" stroke="none"/>
-<text x="569.0" y="777.7" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">5</text>
+<path d="M 534.0 511.9 A 35.0 35.0 0 0 1 569.0 476.9 L 569.0 476.9 A 35.0 35.0 0 0 1 604.0 511.9 L 604.0 1271.3 A 35.0 35.0 0 0 1 569.0 1306.3 L 569.0 1306.3 A 35.0 35.0 0 0 1 534.0 1271.3 Z" fill="#fdbf6f" fill-opacity="0.95" stroke="none"/>
+<text x="569.0" y="901.1" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">5</text>
 </g>
-<path d="M 534.0 438.6 A 21.7 21.7 0 0 1 555.7 416.9 L 582.3 416.9 A 21.7 21.7 0 0 1 604.0 438.6 L 604.0 460.3 L 604.0 460.3 L 534.0 460.3 Z" fill="#6a3d9a" fill-opacity="0.95" stroke="none"/>
-<text x="569.0" y="446.2" font-size="21" text-anchor="middle" fill="#ffffff" font-weight="700">10</text>
-<path d="M 534.0 1076.1 L 534.0 1076.1 L 604.0 1076.1 L 604.0 1097.8 A 21.7 21.7 0 0 1 582.3 1119.5 L 555.7 1119.5 A 21.7 21.7 0 0 1 534.0 1097.8 Z" fill="#33a02c" fill-opacity="0.95" stroke="none"/>
-<text x="569.0" y="1105.4" font-size="21" text-anchor="middle" fill="#ffffff" font-weight="700">3</text>
-<text x="569.0" y="1153.5" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">chr 3?</text>
-<text x="569.0" y="1180.5" font-size="21" text-anchor="middle" fill="#6b6b6b">8 Mb</text>
-<path d="M 666.0 359.7 A 35.0 35.0 0 0 1 701.0 324.7 L 701.0 324.7 A 35.0 35.0 0 0 1 736.0 359.7 L 736.0 1084.5 A 35.0 35.0 0 0 1 701.0 1119.5 L 701.0 1119.5 A 35.0 35.0 0 0 1 666.0 1084.5 Z" fill="#4c72b0" fill-opacity="0.82" stroke="none" />
+<path d="M 534.0 498.6 A 21.7 21.7 0 0 1 555.7 476.9 L 582.3 476.9 A 21.7 21.7 0 0 1 604.0 498.6 L 604.0 520.3 L 604.0 520.3 L 534.0 520.3 Z" fill="#6a3d9a" fill-opacity="0.95" stroke="none"/>
+<text x="569.0" y="506.2" font-size="21" text-anchor="middle" fill="#ffffff" font-weight="700">10</text>
+<path d="M 534.0 1262.9 L 534.0 1262.9 L 604.0 1262.9 L 604.0 1284.6 A 21.7 21.7 0 0 1 582.3 1306.3 L 555.7 1306.3 A 21.7 21.7 0 0 1 534.0 1284.6 Z" fill="#33a02c" fill-opacity="0.95" stroke="none"/>
+<text x="569.0" y="1292.2" font-size="21" text-anchor="middle" fill="#ffffff" font-weight="700">3</text>
+<text x="569.0" y="1340.3" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">chr 3?</text>
+<text x="569.0" y="1367.3" font-size="21" text-anchor="middle" fill="#6b6b6b">8 Mb</text>
+<path d="M 666.0 403.1 A 35.0 35.0 0 0 1 701.0 368.1 L 701.0 368.1 A 35.0 35.0 0 0 1 736.0 403.1 L 736.0 1271.3 A 35.0 35.0 0 0 1 701.0 1306.3 L 701.0 1306.3 A 35.0 35.0 0 0 1 666.0 1271.3 Z" fill="#4c72b0" fill-opacity="0.82" stroke="none" />
 <g class="blocks">
-<path d="M 666.0 359.7 A 35.0 35.0 0 0 1 701.0 324.7 L 701.0 324.7 A 35.0 35.0 0 0 1 736.0 359.7 L 736.0 1084.5 A 35.0 35.0 0 0 1 701.0 1119.5 L 701.0 1119.5 A 35.0 35.0 0 0 1 666.0 1084.5 Z" fill="#cab2d6" fill-opacity="0.95" stroke="none"/>
-<text x="701.0" y="731.6" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">6</text>
+<path d="M 666.0 403.1 A 35.0 35.0 0 0 1 701.0 368.1 L 701.0 368.1 A 35.0 35.0 0 0 1 736.0 403.1 L 736.0 1271.3 A 35.0 35.0 0 0 1 701.0 1306.3 L 701.0 1306.3 A 35.0 35.0 0 0 1 666.0 1271.3 Z" fill="#cab2d6" fill-opacity="0.95" stroke="none"/>
+<text x="701.0" y="846.7" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">6</text>
 </g>
-<path d="M 666.0 1076.1 L 666.0 1076.1 L 736.0 1076.1 L 736.0 1097.8 A 21.7 21.7 0 0 1 714.3 1119.5 L 687.7 1119.5 A 21.7 21.7 0 0 1 666.0 1097.8 Z" fill="#33a02c" fill-opacity="0.95" stroke="none"/>
-<text x="701.0" y="1105.4" font-size="21" text-anchor="middle" fill="#ffffff" font-weight="700">3</text>
-<text x="701.0" y="1153.5" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">chr 2?</text>
-<text x="701.0" y="1180.5" font-size="21" text-anchor="middle" fill="#6b6b6b">9 Mb</text>
-<path d="M 798.0 119.0 A 35.0 35.0 0 0 1 833.0 84.0 L 833.0 84.0 A 35.0 35.0 0 0 1 868.0 119.0 L 868.0 1084.5 A 35.0 35.0 0 0 1 833.0 1119.5 L 833.0 1119.5 A 35.0 35.0 0 0 1 798.0 1084.5 Z" fill="#4c72b0" fill-opacity="0.82" stroke="none" />
+<path d="M 666.0 1262.9 L 666.0 1262.9 L 736.0 1262.9 L 736.0 1284.6 A 21.7 21.7 0 0 1 714.3 1306.3 L 687.7 1306.3 A 21.7 21.7 0 0 1 666.0 1284.6 Z" fill="#33a02c" fill-opacity="0.95" stroke="none"/>
+<text x="701.0" y="1292.2" font-size="21" text-anchor="middle" fill="#ffffff" font-weight="700">3</text>
+<text x="701.0" y="1340.3" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">chr 2?</text>
+<text x="701.0" y="1367.3" font-size="21" text-anchor="middle" fill="#6b6b6b">9 Mb</text>
+<path d="M 798.0 119.0 A 35.0 35.0 0 0 1 833.0 84.0 L 833.0 84.0 A 35.0 35.0 0 0 1 868.0 119.0 L 868.0 1271.3 A 35.0 35.0 0 0 1 833.0 1306.3 L 833.0 1306.3 A 35.0 35.0 0 0 1 798.0 1271.3 Z" fill="#4c72b0" fill-opacity="0.82" stroke="none" />
 <g class="blocks">
-<path d="M 798.0 119.0 A 35.0 35.0 0 0 1 833.0 84.0 L 833.0 84.0 A 35.0 35.0 0 0 1 868.0 119.0 L 868.0 316.8 L 868.0 316.8 L 798.0 316.8 Z" fill="#a6cee3" fill-opacity="0.95" stroke="none"/>
-<text x="833.0" y="209.9" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">2</text>
-<path d="M 798.0 316.8 L 798.0 316.8 L 868.0 316.8 L 868.0 360.2 L 868.0 360.2 L 798.0 360.2 Z" fill="#e31a1c" fill-opacity="0.95" stroke="none"/>
-<text x="833.0" y="348.0" font-size="27" text-anchor="middle" fill="#ffffff" font-weight="700">8</text>
-<path d="M 798.0 360.2 L 798.0 360.2 L 868.0 360.2 L 868.0 1084.5 A 35.0 35.0 0 0 1 833.0 1119.5 L 833.0 1119.5 A 35.0 35.0 0 0 1 798.0 1084.5 Z" fill="#7e9cac" fill-opacity="0.95" stroke="none"/>
-<text x="833.0" y="749.3" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">7</text>
+<path d="M 798.0 119.0 A 35.0 35.0 0 0 1 833.0 84.0 L 833.0 84.0 A 35.0 35.0 0 0 1 868.0 119.0 L 868.0 360.7 L 868.0 360.7 L 798.0 360.7 Z" fill="#a6cee3" fill-opacity="0.95" stroke="none"/>
+<text x="833.0" y="231.8" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">2</text>
+<path d="M 798.0 360.7 L 798.0 360.7 L 868.0 360.7 L 868.0 404.1 L 868.0 404.1 L 798.0 404.1 Z" fill="#e31a1c" fill-opacity="0.95" stroke="none"/>
+<text x="833.0" y="391.8" font-size="27" text-anchor="middle" fill="#ffffff" font-weight="700">8</text>
+<path d="M 798.0 404.1 L 798.0 404.1 L 868.0 404.1 L 868.0 1271.3 A 35.0 35.0 0 0 1 833.0 1306.3 L 833.0 1306.3 A 35.0 35.0 0 0 1 798.0 1271.3 Z" fill="#7e9cac" fill-opacity="0.95" stroke="none"/>
+<text x="833.0" y="864.6" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">7</text>
 </g>
 <path d="M 798.0 105.7 A 21.7 21.7 0 0 1 819.7 84.0 L 846.3 84.0 A 21.7 21.7 0 0 1 868.0 105.7 L 868.0 127.4 L 868.0 127.4 L 798.0 127.4 Z" fill="#ff7f00" fill-opacity="0.95" stroke="none"/>
 <text x="833.0" y="113.3" font-size="21" text-anchor="middle" fill="#1a1a1a" font-weight="700">9</text>
-<path d="M 798.0 1076.1 L 798.0 1076.1 L 868.0 1076.1 L 868.0 1097.8 A 21.7 21.7 0 0 1 846.3 1119.5 L 819.7 1119.5 A 21.7 21.7 0 0 1 798.0 1097.8 Z" fill="#ff7f00" fill-opacity="0.95" stroke="none"/>
-<text x="833.0" y="1105.4" font-size="21" text-anchor="middle" fill="#1a1a1a" font-weight="700">9</text>
-<text x="833.0" y="1153.5" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">chr 1?</text>
-<text x="833.0" y="1180.5" font-size="21" text-anchor="middle" fill="#6b6b6b">12 Mb</text>
+<path d="M 798.0 1262.9 L 798.0 1262.9 L 868.0 1262.9 L 868.0 1284.6 A 21.7 21.7 0 0 1 846.3 1306.3 L 819.7 1306.3 A 21.7 21.7 0 0 1 798.0 1284.6 Z" fill="#ff7f00" fill-opacity="0.95" stroke="none"/>
+<text x="833.0" y="1292.2" font-size="21" text-anchor="middle" fill="#1a1a1a" font-weight="700">9</text>
+<text x="833.0" y="1340.3" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">chr 1?</text>
+<text x="833.0" y="1367.3" font-size="21" text-anchor="middle" fill="#6b6b6b">12 Mb</text>
 </g>
 <g id="layer-unassigned" font-family="Helvetica, Arial, sans-serif">
-<text x="121.0" y="1011.0" font-size="33" font-weight="700" text-anchor="middle" fill="#6b6b6b">?</text>
-<path d="M 86.0 1060.0 A 35.0 35.0 0 0 1 121.0 1025.0 L 121.0 1025.0 A 35.0 35.0 0 0 1 156.0 1060.0 L 156.0 1084.5 A 35.0 35.0 0 0 1 121.0 1119.5 L 121.0 1119.5 A 35.0 35.0 0 0 1 86.0 1084.5 Z" fill="#b2df8a" fill-opacity="0.95" stroke="none"/>
-<text x="121.0" y="1081.7" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">4</text>
-<text x="121.0" y="1153.5" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">unplaced</text>
-<text x="121.0" y="1180.5" font-size="21" text-anchor="middle" fill="#6b6b6b">14 kb</text>
+<text x="121.0" y="1197.8" font-size="33" font-weight="700" text-anchor="middle" fill="#6b6b6b">?</text>
+<path d="M 86.0 1246.8 A 35.0 35.0 0 0 1 121.0 1211.8 L 121.0 1211.8 A 35.0 35.0 0 0 1 156.0 1246.8 L 156.0 1271.3 A 35.0 35.0 0 0 1 121.0 1306.3 L 121.0 1306.3 A 35.0 35.0 0 0 1 86.0 1271.3 Z" fill="#b2df8a" fill-opacity="0.95" stroke="none"/>
+<text x="121.0" y="1268.5" font-size="27" text-anchor="middle" fill="#1a1a1a" font-weight="700">4</text>
+<text x="121.0" y="1340.3" font-size="21" font-weight="700" text-anchor="middle" fill="#1a1a1a">unplaced</text>
+<text x="121.0" y="1367.3" font-size="21" text-anchor="middle" fill="#6b6b6b">14 kb</text>
 </g>
 
 

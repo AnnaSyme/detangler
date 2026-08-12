@@ -326,7 +326,14 @@ def bandage_layout(
             1 for o in links
             if o.a != o.b and {o.a, o.b} == {l.a, l.b}
         ) > 1
-        rest_here = spacing * (3.2 if loop else 0.9)
+        # A loop's extra room is measured in RIBBON WIDTHS, not in bead spacing.
+        # The room exists so the contig can come back round without lying on
+        # top of itself, which is a question about the drawn ribbon, not about
+        # how finely the contig is subdivided. Left as spacing * 3.2 it grew
+        # with the bead cap above and flung looped contigs across the figure -
+        # on the Fusarium graph contig 1, whose two ends both meet contig 9,
+        # ended up with connectors 10.5 ribbon widths long.
+        rest_here = segment_thickness() * 0.9 if loop else spacing * 0.9
         springs.append((a_i, b_i, rest_here, 6.0 if loop else 12.0))
         link_pairs.add((min(a_i, b_i), max(a_i, b_i)))
         bonded.add((min(a_i, b_i), max(a_i, b_i)))

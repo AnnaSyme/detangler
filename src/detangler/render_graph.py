@@ -438,15 +438,7 @@ def bandage_layout(
         n: (segment_draw_length(by_name[n].length, args) / max(len(chain[n]) - 1, 1))
         for n in names
     }
-    # Connector length is judged against the RIBBON WIDTH, not the bead spacing.
-    # Bead spacing is a mechanical quantity - how finely a contig is
-    # subdivided - and tying connectors to it means that making contigs stiffer
-    # also lengthens every connector, which has nothing to do with it. It also
-    # raises the threshold of the reel-in pass below (link_rest * 2.6), so a
-    # contig the seed happened to drop far from its neighbour was never pulled
-    # back. Measured on the Fusarium graph: longest connector 10.5 -> 7.2 ribbon
-    # widths, and the figure 45% smaller in area.
-    link_rest = segment_thickness() * 0.38
+    link_rest = spacing * 0.9
     # Centre-to-centre, in ribbon widths, so the VISIBLE gap is (w_sep - 1)
     # widths. At 1.12 that gap was 0.12 of a ribbon - technically not touching,
     # and reading as touching. On the Fusarium graph the old value actually
